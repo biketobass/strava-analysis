@@ -260,7 +260,7 @@ class StravaAnalyzer :
         # We need to make sure that all_actsDF has all of the columns that are referenced
         # in the loop below. Otherwise, the code might throw a key error. For example, if someone
         # has no heart rate data at all, stava-activities.csv won't have a max_heartrate column.
-        necessary_columns = ["distance", "total_elevation_gain", "elapsed_time", "moving_time", "max_speed(mph)", "max_speed(kph)", "start_date", "elevation_gain(ft)", "max_heartrate", "dogs"]
+        necessary_columns = ["distance", "total_elevation_gain", "elapsed_time", "moving_time", "max_speed(mph)", "max_speed(kph)", "start_date", "elevation_gain(ft)", "max_heartrate"]
         for col in necessary_columns :
             if not col in all_actsDF.columns :
                 all_actsDF[col] = np.nan
