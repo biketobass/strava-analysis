@@ -257,6 +257,13 @@ class StravaAnalyzer :
         """Reads in a CSV file containing dowloaded Strava activities and creates a number of CSV files. It creates a CSV file for each activity type, a file with summary statistics for all activities, and a file for each activity type that shows a year by year summary for that type."""
         # Read in the CSV file and make a DataFrame.
         all_actsDF = pd.read_csv('strava-activities.csv', index_col="id", parse_dates=["start_date", "start_date_local"])
+        # We need to make sure that all_actsDF has all of the columns that are referenced
+        # in the loop below. Otherwise, the code might throw a key error. For example, if someone
+        # has no heart rate data at all, stava-activities.csv won't have a max_heartrate column.
+        necessary_columns = ["distance", "total_elevation_gain", "elapsed_time", "moving_time", "max_speed(mph)", "max_speed(kph)", "start_date", "elevation_gain(ft)", "max_heartrate", "dogs"]
+        for col in necessary_columns :
+            if not col in all_actsDF.columns :
+                all_actsDF[col] = np.nan
         # Get the list of unique activity types (Ride, Hike, Kayak, etc.)
         act_types = all_actsDF["type"].unique()
         # Get the list of unique years in the data.
