@@ -473,10 +473,14 @@ class StravaAnalyzer :
             # of distance and average elevation gain. Here's where we use the fudge factors.
             similarDF = filteredDF[ (filteredDF[dist_key] >= distance - dist_fudge*distance) & (filteredDF[dist_key] <= distance + dist_fudge*distance) & (filteredDF[avg_elev_gain_key] >= avg_elev_gain - elev_fudge*avg_elev_gain) & (filteredDF[avg_elev_gain_key] <= avg_elev_gain + elev_fudge*avg_elev_gain)  ]
             similar_rides= similarDF[[speed_key, avg_elev_gain_key, dist_key]]
-            pred3 = similarDF[speed_key].mean()
+            pred3 = 0
             print("******** Model 3 ********")
-            print("Predicted average speed based on", len(similar_rides), "similar rides =", f'{pred3:.2f}', speed_unit)
-            print("Moving time would equal", math.floor(distance/pred3), "hours and", round(((distance%pred3)/pred3)*60), "minutes.")
+            if len(similar_rides) > 0 :
+                pred3 = similarDF[speed_key].mean()
+                print("Predicted average speed based on", len(similar_rides), "similar rides =", f'{pred3:.2f}', speed_unit)
+                print("Moving time would equal", math.floor(distance/pred3), "hours and", round(((distance%pred3)/pred3)*60), "minutes.")
+            else :
+                print("There were no similar rides. Perhaps try more generous fudge factors.")
 
             return [pred1, pred2[0], pred3]
         except FileNotFoundError:
