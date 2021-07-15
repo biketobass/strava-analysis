@@ -397,13 +397,16 @@ class StravaAnalyzer :
         summaryDF.to_csv("strava-summary.csv")
 
 
-    def predict_avg_speed(self, elev_gain, distance, lower_speed_filter=0, upper_speed_filter=float("inf"), lower_distance_filter=0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False) :
-        """This method takes the total elevation gain of a proposed route (in feet or meters) and the distance of that route (in miles or kilometers) to predict what your average speed will be based on past performance. It does this by generating three different models (because I haven't decided on a best model yet). The first is based on a linear regression where the independent variable is average elevation gain which is just the total elevation gain of a ride (in feet or meters) divided by the distance (in miles or kilometers). The dependent variable is average speed. The second model is based on a multivariate linear regression using elevation gain and distance. The third model is just the average of the average speeds of rides with a similar distance and elevation profile.  The *_filter parameters allow you to specify rides to ignore. For example, if you don't want to include slow rides with your kids in your model, set the lower_speed_filter to a speed lower than your usual average speed on solo rides. model_start_year allows you to specify what data you want to include in your modeling. If you only want to include rides from 2020 on, for example, set model_start_year to 2020. The fudge factors let you define what it means for a ride to be similar to another in the third model. The defaults are both 0.1. This means that a ride is considered similar if it has a distance and average elevation gain within plus or minus 10% of the those of the ride you are interested in. Finally, the metric parameter lets you toggle between Imperial and metric. The default is Imperial."""
+    def predict_avg_speed(self, elev_gain, distance, lower_speed_filter=0, upper_speed_filter=float("inf"), lower_distance_filter=0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
+        """This method takes the total elevation gain of a proposed route (in feet or meters) and the distance of that route (in miles or kilometers) to predict what your average speed will be based on past performance. It does this by generating three different models (because I haven't decided on a best model yet). The first is based on a linear regression where the independent variable is average elevation gain which is just the total elevation gain of an activity (in feet or meters) divided by the distance (in miles or kilometers). The dependent variable is average speed. The second model is based on a multivariate linear regression using elevation gain and distance. The third model is just the average of the average speeds of activities with a similar distance and elevation profile.  The *_filter parameters allow you to specify activities to ignore. For example, if you don't want to include slow bike rides with your kids in your model, set the lower_speed_filter to a speed lower than your usual average speed on solo rides. model_start_year allows you to specify what data you want to include in your modeling. If you only want to include bike rides from 2020 on, for example, set model_start_year to 2020. The fudge factors let you define what it means for an activity to be similar to another in the third model. The defaults are both 0.1. This means that an activity is considered similar if it has a distance and average elevation gain within plus or minus 10% of the those of the activity you are interested in. The metric parameter lets you toggle between Imperial and metric. The default is Imperial. activity_type let's you set what type of activity you are modeling. The default is Ride. If you want to model a different activity, set the activity_type to be exactly as Strava names it: Ride, Hike, Kayaking, Canoeing, etc."""
+
+        # Set the name of the csv file to use.
+        csv_file = activity_type + ".csv"
 
         # First read the Ride data from the appropriate csv file and build a pandas DataFrame.
         # Put it in a try statement to catch the situation where Ride.csv does not exist.
         try :
-            rideDF = pd.read_csv('Ride.csv', index_col="id", parse_dates=["start_date", "start_date_local"])
+            actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
             # Make the appropriate adjustments for Imperial or metric.
             if not metric :
                 speed_key = "average_speed(mph)"
@@ -423,65 +426,67 @@ class StravaAnalyzer :
             # to ignore rides that I have taken with my family (which are slower than my solo rides)
             # and short rides in which I have not yet fully warmed up. If I want to get a sense of how
             # long a family ride will take, I use the upper filters to ignore my solo rides.
-            filteredDF = rideDF[ (rideDF[speed_key] > lower_speed_filter) &
-                                 (rideDF[speed_key] < upper_speed_filter) &
-                                 (rideDF[dist_key] > lower_distance_filter) &
-                                 (rideDF[dist_key] < upper_distance_filter) &
-                                 (rideDF["start_date"] >= datetime.datetime(year = model_start_year, month = 1, day=1, tzinfo=pytz.utc))]
+            filteredDF = actDF[ (actDF[speed_key] > lower_speed_filter) &
+                                 (actDF[speed_key] < upper_speed_filter) &
+                                 (actDF[dist_key] > lower_distance_filter) &
+                                 (actDF[dist_key] < upper_distance_filter) &
+                                 (actDF["start_date"] >= datetime.datetime(year = model_start_year, month = 1, day=1, tzinfo=pytz.utc))]
             avg_elev_gain = elev_gain/distance
             # For kicks let's plot average speed versus average elevation gain and
             # add in a line showing the linear regression.
             fig, ax = plt.subplots()
             ax.scatter(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
-            lin = linregress(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
-            max_avg_elev_gain = 100
-            if metric:
-                max_avg_elev_gain = round(max_avg_elev_gain/(3.28084*1.60934))
-            x = np.arange(0,max_avg_elev_gain)
-            if metric:
-                x = np.arange(0,19)
-            y = x*lin.slope + lin.intercept
-            ax.plot(x,y, color='red')
-            if not metric:
-                ax.set_xlabel("Average elevation gain (ft) per mile")
-                ax.set_ylabel("Average Speed (mph)")
+            pred1 = 0.0
+            pred2 = [0.0]
+            if filteredDF[avg_elev_gain_key].sum() > 0:
+                lin = linregress(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
+                #max_avg_elev_gain = 100
+                max_avg_elev_gain = filteredDF[avg_elev_gain_key].max()
+                x = np.arange(0,max_avg_elev_gain)
+                y = x*lin.slope + lin.intercept
+                ax.plot(x,y, color='red')
+                ax.set_title("Average Speed vs. Average Elevation Gain - " + activity_type)
+                if not metric:
+                    ax.set_xlabel("Average elevation gain (ft) per mile")
+                    ax.set_ylabel("Average Speed (mph)")
+                else:
+                    ax.set_xlabel("Average elevation gain (meters) per km")
+                    ax.set_ylabel("Average Speed (kph)")
+                if not metric :
+                    fig.savefig(activity_type+"-AvgSpeedVsAvgElevGainImperial.png")
+                else :
+                    fig.savefig(activity_type+"-AvgSpeedVsAvgElevGainMetric.png")
+                # Now do the multivariate regression.
+                Indep = filteredDF[[elev_gain_key, dist_key]]
+                dep = filteredDF[speed_key]
+                regr = linear_model.LinearRegression()
+                regr.fit(Indep,dep)
+                # Now get the predictions.
+                pred1 = avg_elev_gain*lin.slope + lin.intercept
+                pred2 = regr.predict([[elev_gain, distance]])
+                print("Average elevation gain per distance =", f'{avg_elev_gain:.2f}', avg_elev_gain_key)
+                print("******** Model 1 ********")
+                print("Predicted average speed based on average elevation gain per distance =", f'{pred1:.2f}', speed_unit)
+                print("Moving time would equal", math.floor(distance/pred1), "hours and", round(((distance%pred1)/pred1)*60), "minutes.")
+                print("******** Model 2 ********")
+                print("Predicted average speed based on multivariate regression =", f'{pred2[0]:.2f}', speed_unit)
+                print("Moving time would equal", math.floor(distance/pred2[0]), "hours and", round(((distance%pred2[0])/pred2[0])*60), "minutes.")
             else:
-                ax.set_xlabel("Average elevation gain (meters) per km")
-                ax.set_ylabel("Average Speed (kph)")
-            if not metric :
-                fig.savefig("AvgSpeedVsAvgElevGainImperial.png")
-            else :
-                fig.savefig("AvgSpeedVsAvgElevGainMetric.png")
-            # Now do the multivariate regression.
-            Indep = filteredDF[[elev_gain_key, dist_key]]
-            dep = filteredDF[speed_key]
-            regr = linear_model.LinearRegression()
-            regr.fit(Indep,dep)
-            # Now get the predictions.
-            pred1 = avg_elev_gain*lin.slope + lin.intercept
-            pred2 = regr.predict([[elev_gain, distance]])
-            print("Average elevation gain per distance =", f'{avg_elev_gain:.2f}', avg_elev_gain_key)
-            print("******** Model 1 ********")
-            print("Predicted average speed based on average elevation gain per distance =", f'{pred1:.2f}', speed_unit)
-            print("Moving time would equal", math.floor(distance/pred1), "hours and", round(((distance%pred1)/pred1)*60), "minutes.")
-            print("******** Model 2 ********")
-            print("Predicted average speed based on multivariate regression =", f'{pred2[0]:.2f}', speed_unit)
-            print("Moving time would equal", math.floor(distance/pred2[0]), "hours and", round(((distance%pred2[0])/pred2[0])*60), "minutes.")
-
-            # To make the prediction based on similar rides we need to filter the data more
-            # to include only rides that are similar to the one we're asking about in terms
+                print("Sorry. Can't use Models 1 and 2 if there is no elevation gain.")
+            # To make the prediction based on similar activities we need to filter the data more
+            # to include only activities that are similar to the one we're asking about in terms
             # of distance and average elevation gain. Here's where we use the fudge factors.
             similarDF = filteredDF[ (filteredDF[dist_key] >= distance - dist_fudge*distance) & (filteredDF[dist_key] <= distance + dist_fudge*distance) & (filteredDF[avg_elev_gain_key] >= avg_elev_gain - elev_fudge*avg_elev_gain) & (filteredDF[avg_elev_gain_key] <= avg_elev_gain + elev_fudge*avg_elev_gain)  ]
-            similar_rides= similarDF[[speed_key, avg_elev_gain_key, dist_key]]
+            similar_acts= similarDF[[speed_key, avg_elev_gain_key, dist_key]]
             pred3 = 0
             print("******** Model 3 ********")
-            if len(similar_rides) > 0 :
+            if len(similar_acts) > 0 :
                 pred3 = similarDF[speed_key].mean()
-                print("Predicted average speed based on", len(similar_rides), "similar rides =", f'{pred3:.2f}', speed_unit)
+                print("Predicted average speed based on", len(similar_acts), "similar activities =", f'{pred3:.2f}', speed_unit)
                 print("Moving time would equal", math.floor(distance/pred3), "hours and", round(((distance%pred3)/pred3)*60), "minutes.")
             else :
-                print("There were no similar rides. Perhaps try more generous fudge factors.")
+                print("There were no similar activities. Perhaps try more generous fudge factors.")
 
             return [pred1, pred2[0], pred3]
         except FileNotFoundError:
-            print("Ride.csv file does not exist. predict_avg_speed can only be used on rides. Record some and try again.")
+            print(csv_file, "file does not exist. Record some of that activity and try again.")
