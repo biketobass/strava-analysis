@@ -691,7 +691,7 @@ class StravaAnalyzer :
 
     def suggest_similar_activities(self, *, elev_gain=None, distance=None, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
         """
-        Takes an elevation gain and distance and returns a list of URLs of your past Strava activities
+        Takes an elevation gain and a distance and returns a list of URLs of your past Strava activities
         that have similar elevation gain and distance.
 
         The fudge factors let you define the degree of similarity. The defaults are 0.1.
