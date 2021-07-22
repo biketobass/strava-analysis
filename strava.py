@@ -22,7 +22,8 @@ class StravaAnalyzer :
         The access and refresh tokens necessary to use the Strava API
 
     Methods
-    -------    __init__(offline=False)
+    -------
+    __init__(offline=False)
         Create a new StravaAnalyzer object while updating the Strava data stored locally (unless offline is True) and creating summary stats for each activity type.
     get_strava_profile(create_csv=True, profile_csv_path='profile.csv')
         Retrieve the Strava user's profile and print to a CSV file.
@@ -525,13 +526,13 @@ class StravaAnalyzer :
             summaryDF.to_csv("strava-summary.csv")
 
 
-    def predict_avg_speed(self, *, elev_gain, distance, lower_speed_filter=0, upper_speed_filter=float("inf"), lower_distance_filter=0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
+    def predict_avg_speed(self, *, elev_gain, distance, lower_speed_filter=0.0, upper_speed_filter=float("inf"), lower_distance_filter=0.0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
         """
         Uses past performance to predict the average speed of a route given its elevation
         gain and distance in either Imperial or metric units.
 
         It generates three different models and makes a prediction from each.
-        The first is based on a linear regression where the independent variable is
+        The first is based on linear regression where the independent variable is
         average elevation gain of an activity (total elevation gain divided by total
         distance). The dependent variable is average speed. The second model is based
         on a multivariate linear regression using elevation gain and distance. The third
