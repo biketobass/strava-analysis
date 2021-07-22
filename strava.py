@@ -12,21 +12,58 @@ import numpy as np
 from scipy.stats import linregress
 from sklearn import linear_model
 
-# This class defines various methods for accessing and analyzing data on Strava.
-
 class StravaAnalyzer :
+    """
+    This class defines various methods for accessing and analyzing a user's data on Strava.
+
+    Attributes
+    ----------
+    strava_tokens : dictionary
+        The access and refresh tokens necessary to use the Strava API
+
+    Methods
+    -------    __init__(offline=False)
+        Create a new StravaAnalyzer object while updating the Strava data stored locally (unless offline is True) and creating summary stats for each activity type.
+    get_strava_profile(create_csv=True, profile_csv_path='profile.csv')
+        Retrieve the Strava user's profile and print to a CSV file.
+    get_all_activities(start_date='January 1, 1970', end_date=None, csv_file='strava-actvities.csv', overwrite=False)
+        Retrieve the Strava user's activities from start_date to end_date (or all activities if the default parameters are used) and write them to a csv file.
+    separate_activity_types()
+        Create a CSV file for each activity type, a csv file with summary statistics for all activities, and a file for each activity type that shows a year by year summary for that type.
+    predict_avg_speed(*, elev_gain, distance, lower_speed_filter=0, upper_speed_filter=float("inf"), lower_distance_filter=0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride")
+        Predict the expected average speed of a proposed route given elevation gain and distance.
+    suggest_similar_activities(*, elev_gain=None, distance=None, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride")
+        Returns a list of URLs of your previously uploaded activities with similar distance and elevation gain to those specified.
+
+    """
 
     # Constructor
-    def __init__(self) :
-        # When the object is created, the constructor makes sure it has the
-        # the tokens necessary to connect to Strava and that they
-        # are up to date. After updating as necessary, it stores the tokens
-        # in a file called strava_tokens.json.
-        # This file must already exist since the constructor first reads the
-        # tokens from it and checks if they have expired. If the file does not yet exist,
-        # the program displays a message to that effect and exits.
-        # Run get_strava_tokens.py and try again. For more details see the Readme and
-        # associated blog post.
+    def __init__(self, offline=False) :
+        """Create a new StravaAnalyzer object.
+
+        When the object is created, the constructor makes sure it has the
+        the tokens necessary to connect to Strava and that they
+        are up to date. After updating as necessary, it stores the tokens
+        in a file called strava_tokens.json.
+        This file must already exist since the constructor first reads the
+        tokens from it and checks if they have expired. If the file does not yet exist,
+        the program displays a message to that effect and exits.
+        Run get_strava_tokens.py and try again. For more details see the Readme and
+        associated blog post.
+
+        Parameters
+        ----------
+        offline : bool, optional
+            A flag that specifies whether there is no Internet connection (default is False)
+        """
+
+        # First check to see if the offline flag is True. If so, don't try to go online.
+        if offline :
+            self.separate_activity_types()
+            return
+
+        # We think we have Internet.
+        # Check if the tokens have expired.
         print("Checking if tokens have expired.")
         try :
             with open('strava_tokens.json') as json_file:
@@ -39,7 +76,7 @@ class StravaAnalyzer :
         if self.strava_tokens['expires_at'] < time.time():
             print("They expired. Updating...")
             # Make Strava auth API call with current refresh token
-            # Replace client_id and client_secret with yours. They are stored in
+            # Your client ID and secret are stored in
             # secret_stuff.json that was created when you ran get_strava_tokens.py.
             try:
                 with open('secret_stuff.json') as secret_file:
@@ -49,15 +86,24 @@ class StravaAnalyzer :
                 quit()
 
             # Make the request and get the response..
-            response = requests.post(
-                url = 'https://www.strava.com/oauth/token',
-                data = {
-                    'client_id': secret_dict['client_id'],
-                    'client_secret': secret_dict['client_secret'],
-                    'grant_type': 'refresh_token',
-                    'refresh_token': self.strava_tokens['refresh_token']
-                }
-            )
+            try :
+                response = requests.post(
+                    url = 'https://www.strava.com/oauth/token',
+                    data = {
+                        'client_id': secret_dict['client_id'],
+                        'client_secret': secret_dict['client_secret'],
+                        'grant_type': 'refresh_token',
+                        'refresh_token': self.strava_tokens['refresh_token']
+                    }
+                )
+            except requests.exceptions.RequestException as e:
+                # There's a problem with the Internet connection so behave as if offline is True
+                # and stop trying to go online.
+                print ("Could not make the API request when refreshing tokens. Received this exception:", e)
+                print("Data will not be updated. Working offline.")
+                self.separate_activity_types()
+                return
+
             # Replace the old strava_tokens with the response.
             self.strava_tokens = response.json()
             # Save new tokens to file
@@ -78,14 +124,35 @@ class StravaAnalyzer :
 
     def get_strava_profile(self, create_csv = True, profile_csv_path =
                      'profile.csv'):
-        """Returns a pandas DataFrame that contains your profile information. It also prints it to a csv file unless create_csv = False."""
+        """Returns a pandas DataFrame that contains your profile information.
+
+        It also prints the profile information to a csv file unless create_csv = False.
+
+        Parameters
+        ----------
+        create_csv : bool, optional
+            A flag that specifies whether to print the profile information to a CSV file (default is True)
+        profile_csv_path: str, optional
+            The path of the CSV file to create (default is 'profile.csv')
+
+        Returns
+        -------
+        DataFrame
+            a pandas DataFrame that contains the profile information
+
+        """
         # Get profile info. You need the URL, access_token and header information.
         access_token = self.strava_tokens['access_token']
         url = 'https://www.strava.com/api/v3/athlete'
         hdrs = {'Authorization': 'Bearer ' + access_token}
 
-        # Make a request object from the info returned.
-        r = requests.get(url, headers=hdrs)
+        # Make a request object.
+        try :
+            r = requests.get(url, headers=hdrs)
+        except requests.exceptions.RequestException as e:
+            print ("Failed to make the API request when attempting to get profile. Received this exception:", e)
+            return None
+
         # Create a dataframe from the json content. This is just the profile info.
         # You have to orient by index because some of the fields may be empty
         # which causes a ValueError("arrays must all be same length") otherwise.
@@ -100,7 +167,46 @@ class StravaAnalyzer :
         return dataframe
 
     def get_all_activities(self, start_date="January 1, 1970", end_date = None, csv_file="strava-activities.csv", overwrite=False):
-        """Retrieves all activities from start_date through end_date and outputs them to a csv file. If no end_date is specified, it assumes from start_date to the present. If no start date is specified, it assumes from the start of time. Dates are assumed to be in the UTC timezone and can be represented in human readable formats thanks to the dateutil module. If overwrite is False and the csv_file already exists, it tries to update the csv_file by changing the start_date to right after the most recent activity already present in the file. Note that the code does not check if the start_date is earlier than the earliest date already in the file. If you want to go back further in time than you already have, you will need to make sure that overwrite is True. If the start_date is after the latest date in the file, it assumes you want to delete everything before the start_date. This is to avoid gaps between the latest date in the file and the new start_date."""
+        """
+        Retrieves activities from Strava and outputs them to a csv file.
+
+        As long as the defaults are left as they are, the first time you run this
+        method, it downloads all of your activities on Strava and saves them to a
+        csv file. On subsequent runs, it updates the csv file with any new activities
+        rather than download everything again. The parameters allow you to download
+        activities within a time window and save them to a file other than the default.
+        If no end_date is specified, the method assumes from start_date to the present.
+        If no start_date is specified, it assumes from the start of time.
+        Dates are assumed to be in the UTC timezone and can be represented in human
+        readable formats thanks to the dateutil module. If overwrite is False and
+        the csv_file already exists, it tries to update the csv_file by changing
+        the start_date to right after the most recent activity already present in the
+        file. Note that the code does not check if the start_date is earlier than the
+        earliest date already in the file. If you want to go back further in time than
+        you already have, you will need to make sure that overwrite is True. If the
+        start_date is after the latest date in the file, it assumes you want to delete
+        everything before the start_date. This is to avoid gaps between the latest date
+        in the file and the new start_date.
+
+        Parameters
+        ----------
+        start_date : str, optional
+            The earliest date in human readable form from which to start downloading
+            activities (the default is 'January 1, 1970')
+        end_date : str, optional
+            The latest date from which to retrieve activities (the default is None which
+            means up to the present moment)
+        csv_file : str, optional
+            The path name of the csv file to use (the default is strava-activities.csv)
+        overwrite : bool, optional
+            flag that specifies whether the method should overwrite the csv file
+            (the default is False which means to update the csv file with new activities)
+
+        Returns
+        -------
+        DataFrame
+            a pandas DataFrame containing the activities downloaded from Strava
+        """
 
         # Parse the start date by parsing it into a Datetime object.
         # Set the timezone to UTC
@@ -126,9 +232,12 @@ class StravaAnalyzer :
         if not overwrite:
             try:
                 existingDF = pd.read_csv(csv_file)
-                existingDF.set_index("id", inplace=True)
-
+            except FileNotFoundError:
+                # The file does not exist.
+                print("The csv file does not already exist.")
+            else :
                 # If we made it here, clearly the file exists.
+                existingDF.set_index("id", inplace=True)
                 file_exists = True
 
                 # Get the latest date which is just the first date
@@ -154,9 +263,7 @@ class StravaAnalyzer :
                     # we're going to overwrite anyway to avoid gaps in the data.
                     print("Need to override overwrite.")
                     overwrite = True
-            except FileNotFoundError:
-                # The file does not exist.
-                print("The csv file does not already exist.")
+
         # Now that we have the start and end times, get the timestamps and convert them to strings
         # for inclusion in the URL.
         start_stamp = str(int(startDT.timestamp()))
@@ -185,7 +292,12 @@ class StravaAnalyzer :
             # get page of activities from Strava
             # We're going to get 200 at a time.
             payload = {'access_token': access_token, 'after': start_stamp, 'before': end_stamp, 'per_page' : '200', 'page': str(page)}
-            r = requests.get(url, params = payload)
+            try:
+                r = requests.get(url, params = payload)
+            except requests.exceptions.RequestException as e:
+                print ("Could not make the API request when requesting Strava activities. Received this exception:", e)
+                print("Data will not be updated. Working offline.")
+                return None
             r = r.json()
             # If no results, then exit loop
             if (not r):
@@ -215,9 +327,9 @@ class StravaAnalyzer :
         if not resultsDF.empty :
             # Customize the following lines to produce the output you are interested in.
             # What you see below are the metrics that I like. You may want different ones.
-            # BUT if you want to use the predict_avg_speed() method for bike rides as
+            # BUT if you want to use the predict_avg_speed() method as
             # I've written it, you need to keep "distance(miles)", "distance(km)",
-            # "Feet per mile", "Meters per km" which make it possible to represent
+            # "Feet per mile", and "Meters per km" which make it possible to represent
             # the average elevation gain per unit of distance in Imperial and metric
             # of an activity. You also need to keep "average_speed(mph)" and "average_speed(kph)".
             # In a nut shell, the lines below adds columns to resultsDF.
@@ -245,6 +357,9 @@ class StravaAnalyzer :
                 resultsDF.to_csv(csv_file)
             else:
                 print("Appending to", csv_file)
+                # To be totally honest, we're not actually appending to the CSV.
+                # We're appending all of the old activities to  all of the new ones
+                # and then recreating the CSV file. It amounts to the same thing.
                 resultsDF = resultsDF.append(existingDF)
                 resultsDF.to_csv(csv_file)
         else:
@@ -254,159 +369,238 @@ class StravaAnalyzer :
 
 
     def separate_activity_types(self):
-        """Reads in a CSV file containing dowloaded Strava activities and creates a number of CSV files. It creates a CSV file for each activity type, a file with summary statistics for all activities, and a file for each activity type that shows a year by year summary for that type."""
+        """
+        Creates a number of CSV files with summary and activity specific information.
+
+        Reads in strava-activities.csv containing downloaded Strava activities and
+        creates a CSV file for each activity type, a file with summary statistics for all
+        activities, and a file for each activity type that shows a year by year summary
+        for that type.
+        """
         # Read in the CSV file and make a DataFrame.
-        all_actsDF = pd.read_csv('strava-activities.csv', index_col="id", parse_dates=["start_date", "start_date_local"])
-        # We need to make sure that all_actsDF has all of the columns that are referenced
-        # in the loop below. Otherwise, the code might throw a key error. For example, if someone
-        # has no heart rate data at all, stava-activities.csv won't have a max_heartrate column.
-        necessary_columns = ["distance", "total_elevation_gain", "elapsed_time", "moving_time", "max_speed(mph)", "max_speed(kph)", "start_date", "elevation_gain(ft)", "max_heartrate"]
-        for col in necessary_columns :
-            if not col in all_actsDF.columns :
-                all_actsDF[col] = np.nan
-        # Get the list of unique activity types (Ride, Hike, Kayak, etc.)
-        act_types = all_actsDF["type"].unique()
-        # Get the list of unique years in the data.
-        # Extract each year out of the data and sort them.
-        years = pd.Series(d.year for d in all_actsDF["start_date"]).unique()
-        years.sort()
+        try :
+            all_actsDF = pd.read_csv('strava-activities.csv', index_col="id", parse_dates=["start_date", "start_date_local"])
+        except FileNotFoundError :
+            print("separate_activity_types couldn't find strava-activities.csv.")
+        else :
+            # We need to make sure that all_actsDF has all of the columns that are referenced
+            # in the loop below. Otherwise, the code might throw a key error. For example, if someone
+            # has no heart rate data at all, stava-activities.csv won't have a max_heartrate column,
+            # causing the code to blow up when it looks for that column. So just add empty columns
+            # as needed.
+            necessary_columns = ["distance", "total_elevation_gain", "elapsed_time", "moving_time", "max_speed(mph)", "max_speed(kph)", "start_date", "elevation_gain(ft)", "max_heartrate"]
+            for col in necessary_columns :
+                if not col in all_actsDF.columns :
+                    all_actsDF[col] = np.nan
 
-        # Create a dataframe that will hold summary statistics for each activity.
-        # The index or the set of rows is the activity types. The columns are the stats
-        # we are interested in.
-        stats = ["Total Distance (miles)", "Total Distance (km)", "Total Elev. Gain (meters)", "Total Elev. Gain (ft)", "Total Elev. Gain (miles)", "Total Elev. Gain (km)", "Total Duration (hours)", "Total Duration (days)", "Average Duration (min)", "Total Moving Time (hours)", "Total Moving Time (days)", "Average Moving Time (min)", "Average Speed (mph)", "Average Speed (kph)", "Max Speed (mph)", "Max Speed (kph)", "Max Speed Date", "Max Elevation Gain(ft)", "Max Elevation Gain(m)" "Max Elevation Gain Date", "Max Heart Rate", "Max HR Date"]
-        summaryDF = pd.DataFrame(index=act_types, columns=stats)
-        # Loop through all of the activity types and add info into the summary file.
-        # Also create a csv for each activity that has the Strava info for that activity only.
-        for act in act_types:
-            actDF = all_actsDF[all_actsDF["type"] == act]
-            actDF.to_csv(act + ".csv")
-            # Add the summary stats
-            summaryDF.loc[act, "Total Distance (miles)"] = actDF["distance"].sum() * 0.000621371
-            summaryDF.loc[act, "Total Distance (km)"] = actDF["distance"].sum() / 1000
-            summaryDF.loc[act, "Total Elev. Gain (meters)"] = actDF["total_elevation_gain"].sum()
-            summaryDF.loc[act, "Total Elev. Gain (ft)"] = actDF["total_elevation_gain"].sum() * 3.28084
-            summaryDF.loc[act, "Total Elev. Gain (miles)"] = actDF["total_elevation_gain"].sum() * 3.28084/5280
-            summaryDF.loc[act, "Total Elev. Gain (km)"] = actDF["total_elevation_gain"].sum() / 1000
-            summaryDF.loc[act, "Total Duration (hours)"] = actDF["elapsed_time"].sum() / 3600
-            summaryDF.loc[act, "Total Duration (days)"] = actDF["elapsed_time"].sum() / (3600*24)
-            summaryDF.loc[act, "Average Duration (min)"] = actDF["elapsed_time"].mean() / 60
-            summaryDF.loc[act, "Total Moving Time (hours)"] = actDF["moving_time"].sum() / 3600
-            summaryDF.loc[act, "Total Moving Time (days)"] = actDF["moving_time"].sum() / (3600*24)
-            summaryDF.loc[act, "Average Moving Time (min)"] = actDF["moving_time"].mean() / 60
-            summaryDF.loc[act, "Average Speed (mph)"] = (actDF["distance"].sum() / actDF["moving_time"].sum()) * 2.23694
-            summaryDF.loc[act, "Average Speed (kph)"] = (actDF["distance"].sum() / actDF["moving_time"].sum()) * 3.6
-            summaryDF.loc[act, "Max Speed (mph)"] = actDF["max_speed(mph)"].max()
-            summaryDF.loc[act, "Max Speed (kph)"] = actDF["max_speed(kph)"].max()
-            # We have to be careful anytime we want a specific date that something occured because
-            # it may never have occurred and the result may be empty. That's why we do the following
-            # five lines.
-            s = actDF.loc[actDF["max_speed(mph)"] == actDF["max_speed(mph)"].max(), "start_date"]
-            if not s.empty :
-                summaryDF.loc[act, "Max Speed Date"] = s.iloc[0].date()
-            else :
-                summaryDF.loc[act, "Max Speed Date"] = None
-            summaryDF.loc[act, "Max Elevation Gain(ft)"] = actDF["elevation_gain(ft)"].max()
-            summaryDF.loc[act, "Max Elevation Gain(m)"] = actDF["total_elevation_gain"].max()
-            s = actDF.loc[actDF["elevation_gain(ft)"] == actDF["elevation_gain(ft)"].max(), "start_date"]
-            if not s.empty :
-                summaryDF.loc[act, "Max Elevation Gain Date"] = s.iloc[0].date()
-            else :
-                summaryDF.loc[act, "Max Elevation Gain Date"] = None
-            summaryDF.loc[act, "Max Heart Rate"] = actDF["max_heartrate"].max()
-            # We have to be careful with max heart rate because not all activities will have HR data.
-            # The following code makes sure there is HR data before trying to access it.
-            s = actDF.loc[actDF["max_heartrate"] == actDF["max_heartrate"].max(), "start_date"]
-            if not s.empty :
-                summaryDF.loc[act, "Max HR Date"] = s.iloc[0].date()
-            else:
-                summaryDF.loc[act, "Max HR Date"] = None
+            # Get the list of unique activity types (Ride, Hike, Kayak, etc.)
+            act_types = all_actsDF["type"].unique()
+            # Get the list of unique years in the data.
+            # Extract each year out of the data and sort them.
+            years = pd.Series(d.year for d in all_actsDF["start_date"]).unique()
+            years.sort()
 
-            # Summarize each activity by year
-            act_summaryDF = pd.DataFrame(index=stats, columns = years)
-            for y in years :
-                subDF = actDF[(actDF["start_date"] >= datetime.datetime(year = y, month = 1, day = 1, tzinfo=pytz.utc)) & (actDF["start_date"] < datetime.datetime(year = y+1, month = 1, day = 1, tzinfo=pytz.utc))]
-                # Need to check that we had any of this activity in the year.
-                if not subDF.empty :
-                    act_summaryDF.loc["Total Distance (miles)", y] = subDF["distance"].sum() * 0.000621371
-                    act_summaryDF.loc["Total Distance (km)", y] = subDF["distance"].sum() / 1000
-                    act_summaryDF.loc["Total Elev. Gain (meters)", y] = subDF["total_elevation_gain"].sum()
-                    act_summaryDF.loc["Total Elev. Gain (ft)", y] = subDF["total_elevation_gain"].sum() * 3.28084
-                    act_summaryDF.loc["Total Elev. Gain (miles)", y] = subDF["total_elevation_gain"].sum() * 3.28084/5280
-                    act_summaryDF.loc["Total Elev. Gain (km)", y] = subDF["total_elevation_gain"].sum() / 1000
-                    act_summaryDF.loc["Total Duration (hours)", y] = subDF["elapsed_time"].sum() / 3600
-                    act_summaryDF.loc["Total Duration (days)", y] = subDF["elapsed_time"].sum() / (3600*24)
-                    act_summaryDF.loc["Average Duration (min)", y] = subDF["elapsed_time"].mean() / 60
-                    act_summaryDF.loc["Total Moving Time (hours)", y] = subDF["moving_time"].sum() / 3600
-                    act_summaryDF.loc["Total Moving Time (days)", y] = subDF["moving_time"].sum() / (3600*24)
-                    act_summaryDF.loc["Average Moving Time (min)", y] = subDF["moving_time"].mean() / 60
-                    act_summaryDF.loc["Average Speed (mph)", y] = (subDF["distance"].sum() / subDF["moving_time"].sum()) * 2.23694
-                    act_summaryDF.loc["Average Speed (kph)", y] = (subDF["distance"].sum() / subDF["moving_time"].sum()) * 3.6
-                    act_summaryDF.loc["Max Speed (mph)", y] = subDF["max_speed(mph)"].max()
-                    act_summaryDF.loc["Max Speed (kph)", y] = subDF["max_speed(kph)"].max()
-                    s = subDF.loc[subDF["max_speed(mph)"] == subDF["max_speed(mph)"].max(), "start_date"]
-                    if not s.empty:
-                        act_summaryDF.loc["Max Speed Date", y] = s.iloc[0].date()
-                    else :
-                        act_summaryDF.loc["Max Speed Date", y] = None
+            # Create a dataframe that will hold summary statistics for each activity.
+            # The index or the set of rows is the activity types. The columns are the stats
+            # we are interested in.
+            stats = ["Total Distance (miles)", "Total Distance (km)", "Total Elev. Gain (meters)", "Total Elev. Gain (ft)", "Total Elev. Gain (miles)", "Total Elev. Gain (km)", "Total Duration (hours)", "Total Duration (days)", "Average Duration (min)", "Total Moving Time (hours)", "Total Moving Time (days)", "Average Moving Time (min)", "Average Speed (mph)", "Average Speed (kph)", "Max Speed (mph)", "Max Speed (kph)", "Max Speed Date", "Max Elevation Gain(ft)", "Max Elevation Gain(m)", "Max Elevation Gain Date", "Max Heart Rate", "Max HR Date"]
+            summaryDF = pd.DataFrame(index=act_types, columns=stats)
+            # Loop through all of the activity types and add info into the summary file.
+            # Also create a csv for each activity that has the Strava info for that activity only.
+            for act in act_types:
+                actDF = all_actsDF[all_actsDF["type"] == act]
+                actDF.to_csv(act + ".csv")
+                # Add the summary stats
+                summaryDF.loc[act, "Total Distance (miles)"] = actDF["distance"].sum() * 0.000621371
+                summaryDF.loc[act, "Total Distance (km)"] = actDF["distance"].sum() / 1000
+                summaryDF.loc[act, "Total Elev. Gain (meters)"] = actDF["total_elevation_gain"].sum()
+                summaryDF.loc[act, "Total Elev. Gain (ft)"] = actDF["total_elevation_gain"].sum() * 3.28084
+                summaryDF.loc[act, "Total Elev. Gain (miles)"] = actDF["total_elevation_gain"].sum() * 3.28084/5280
+                summaryDF.loc[act, "Total Elev. Gain (km)"] = actDF["total_elevation_gain"].sum() / 1000
+                summaryDF.loc[act, "Total Duration (hours)"] = actDF["elapsed_time"].sum() / 3600
+                summaryDF.loc[act, "Total Duration (days)"] = actDF["elapsed_time"].sum() / (3600*24)
+                summaryDF.loc[act, "Average Duration (min)"] = actDF["elapsed_time"].mean() / 60
+                summaryDF.loc[act, "Total Moving Time (hours)"] = actDF["moving_time"].sum() / 3600
+                summaryDF.loc[act, "Total Moving Time (days)"] = actDF["moving_time"].sum() / (3600*24)
+                summaryDF.loc[act, "Average Moving Time (min)"] = actDF["moving_time"].mean() / 60
+                summaryDF.loc[act, "Average Speed (mph)"] = (actDF["distance"].sum() / actDF["moving_time"].sum()) * 2.23694
+                summaryDF.loc[act, "Average Speed (kph)"] = (actDF["distance"].sum() / actDF["moving_time"].sum()) * 3.6
+                summaryDF.loc[act, "Max Speed (mph)"] = actDF["max_speed(mph)"].max()
+                summaryDF.loc[act, "Max Speed (kph)"] = actDF["max_speed(kph)"].max()
+                # We have to be careful anytime we want a specific date that something occured because
+                # it may never have occurred and the result may be empty. That's why we do the following
+                # five lines.
+                s = actDF.loc[actDF["max_speed(mph)"] == actDF["max_speed(mph)"].max(), "start_date"]
+                if not s.empty :
+                    summaryDF.loc[act, "Max Speed Date"] = s.iloc[0].date()
+                else :
+                    summaryDF.loc[act, "Max Speed Date"] = None
+                summaryDF.loc[act, "Max Elevation Gain(ft)"] = actDF["elevation_gain(ft)"].max()
+                summaryDF.loc[act, "Max Elevation Gain(m)"] = actDF["total_elevation_gain"].max()
+                s = actDF.loc[actDF["elevation_gain(ft)"] == actDF["elevation_gain(ft)"].max(), "start_date"]
+                if not s.empty :
+                    summaryDF.loc[act, "Max Elevation Gain Date"] = s.iloc[0].date()
+                else :
+                    summaryDF.loc[act, "Max Elevation Gain Date"] = None
+                summaryDF.loc[act, "Max Heart Rate"] = actDF["max_heartrate"].max()
+                # We have to be careful with max heart rate because not all activities will have HR data.
+                # The following code makes sure there is HR data before trying to access it.
+                s = actDF.loc[actDF["max_heartrate"] == actDF["max_heartrate"].max(), "start_date"]
+                if not s.empty :
+                    summaryDF.loc[act, "Max HR Date"] = s.iloc[0].date()
+                else:
+                    summaryDF.loc[act, "Max HR Date"] = None
 
-                    act_summaryDF.loc["Max Elevation Gain(ft)", y] = subDF["elevation_gain(ft)"].max()
-                    act_summaryDF.loc["Max Elevation Gain(ft)", y] = subDF["total_elevation_gain"].max()
-                    s = subDF.loc[subDF["elevation_gain(ft)"] == subDF["elevation_gain(ft)"].max(), "start_date"]
-                    if not s.empty :
-                        act_summaryDF.loc["Max Elevation Gain Date", y] = s.iloc[0].date()
-                    else :
-                        act_summaryDF.loc["Max Elevation Gain Date", y] = None
-                    act_summaryDF.loc["Max Heart Rate", y] = subDF["max_heartrate"].max()
-                    s = subDF.loc[subDF["max_heartrate"] == subDF["max_heartrate"].max(), "start_date"]
-                    if not s.empty :
-                        act_summaryDF.loc["Max HR Date", y] = s.iloc[0].date()
-                    else:
-                        act_summaryDF.loc["Max HR Date", y] = None
+                # Summarize each activity by year
+                act_summaryDF = pd.DataFrame(index=stats, columns = years)
+                for y in years :
+                    subDF = actDF[(actDF["start_date"] >= datetime.datetime(year = y, month = 1, day = 1, tzinfo=pytz.utc)) & (actDF["start_date"] < datetime.datetime(year = y+1, month = 1, day = 1, tzinfo=pytz.utc))]
+                    # Need to check that we had any of this activity in the year.
+                    if not subDF.empty :
+                        act_summaryDF.loc["Total Distance (miles)", y] = subDF["distance"].sum() * 0.000621371
+                        act_summaryDF.loc["Total Distance (km)", y] = subDF["distance"].sum() / 1000
+                        act_summaryDF.loc["Total Elev. Gain (meters)", y] = subDF["total_elevation_gain"].sum()
+                        act_summaryDF.loc["Total Elev. Gain (ft)", y] = subDF["total_elevation_gain"].sum() * 3.28084
+                        act_summaryDF.loc["Total Elev. Gain (miles)", y] = subDF["total_elevation_gain"].sum() * 3.28084/5280
+                        act_summaryDF.loc["Total Elev. Gain (km)", y] = subDF["total_elevation_gain"].sum() / 1000
+                        act_summaryDF.loc["Total Duration (hours)", y] = subDF["elapsed_time"].sum() / 3600
+                        act_summaryDF.loc["Total Duration (days)", y] = subDF["elapsed_time"].sum() / (3600*24)
+                        act_summaryDF.loc["Average Duration (min)", y] = subDF["elapsed_time"].mean() / 60
+                        act_summaryDF.loc["Total Moving Time (hours)", y] = subDF["moving_time"].sum() / 3600
+                        act_summaryDF.loc["Total Moving Time (days)", y] = subDF["moving_time"].sum() / (3600*24)
+                        act_summaryDF.loc["Average Moving Time (min)", y] = subDF["moving_time"].mean() / 60
+                        act_summaryDF.loc["Average Speed (mph)", y] = (subDF["distance"].sum() / subDF["moving_time"].sum()) * 2.23694
+                        act_summaryDF.loc["Average Speed (kph)", y] = (subDF["distance"].sum() / subDF["moving_time"].sum()) * 3.6
+                        act_summaryDF.loc["Max Speed (mph)", y] = subDF["max_speed(mph)"].max()
+                        act_summaryDF.loc["Max Speed (kph)", y] = subDF["max_speed(kph)"].max()
+                        s = subDF.loc[subDF["max_speed(mph)"] == subDF["max_speed(mph)"].max(), "start_date"]
+                        if not s.empty:
+                            act_summaryDF.loc["Max Speed Date", y] = s.iloc[0].date()
+                        else :
+                            act_summaryDF.loc["Max Speed Date", y] = None
 
-            # Add a few totals
-            act_summaryDF.loc["Total Distance (miles)", "Total"] = act_summaryDF.loc["Total Distance (miles)"].sum()
-            act_summaryDF.loc["Total Distance (km)", "Total"] = act_summaryDF.loc["Total Distance (km)"].sum()
-            act_summaryDF.loc["Total Elev. Gain (meters)", "Total"] = act_summaryDF.loc["Total Elev. Gain (meters)"].sum()
-            act_summaryDF.loc["Total Elev. Gain (ft)", "Total"] = act_summaryDF.loc["Total Elev. Gain (ft)"].sum()
-            act_summaryDF.loc["Total Elev. Gain (miles)", "Total"] = act_summaryDF.loc["Total Elev. Gain (miles)"].sum()
-            act_summaryDF.loc["Total Elev. Gain (km)", "Total"] = act_summaryDF.loc["Total Elev. Gain (km)"].sum()
-            act_summaryDF.loc["Total Duration (hours)", "Total"] = act_summaryDF.loc["Total Duration (hours)"].sum()
-            act_summaryDF.loc["Total Duration (days)", "Total"] = act_summaryDF.loc["Total Duration (days)"].sum()
+                        act_summaryDF.loc["Max Elevation Gain(ft)", y] = subDF["elevation_gain(ft)"].max()
+                        act_summaryDF.loc["Max Elevation Gain(m)", y] = subDF["total_elevation_gain"].max()
+                        s = subDF.loc[subDF["elevation_gain(ft)"] == subDF["elevation_gain(ft)"].max(), "start_date"]
+                        if not s.empty :
+                            act_summaryDF.loc["Max Elevation Gain Date", y] = s.iloc[0].date()
+                        else :
+                            act_summaryDF.loc["Max Elevation Gain Date", y] = None
+                        act_summaryDF.loc["Max Heart Rate", y] = subDF["max_heartrate"].max()
+                        s = subDF.loc[subDF["max_heartrate"] == subDF["max_heartrate"].max(), "start_date"]
+                        if not s.empty :
+                            act_summaryDF.loc["Max HR Date", y] = s.iloc[0].date()
+                        else:
+                            act_summaryDF.loc["Max HR Date", y] = None
+                # Add a few totals
+                act_summaryDF.loc["Total Distance (miles)", "Total"] = act_summaryDF.loc["Total Distance (miles)"].sum()
+                act_summaryDF.loc["Total Distance (km)", "Total"] = act_summaryDF.loc["Total Distance (km)"].sum()
+                act_summaryDF.loc["Total Elev. Gain (meters)", "Total"] = act_summaryDF.loc["Total Elev. Gain (meters)"].sum()
+                act_summaryDF.loc["Total Elev. Gain (ft)", "Total"] = act_summaryDF.loc["Total Elev. Gain (ft)"].sum()
+                act_summaryDF.loc["Total Elev. Gain (miles)", "Total"] = act_summaryDF.loc["Total Elev. Gain (miles)"].sum()
+                act_summaryDF.loc["Total Elev. Gain (km)", "Total"] = act_summaryDF.loc["Total Elev. Gain (km)"].sum()
+                act_summaryDF.loc["Total Duration (hours)", "Total"] = act_summaryDF.loc["Total Duration (hours)"].sum()
+                act_summaryDF.loc["Total Duration (days)", "Total"] = act_summaryDF.loc["Total Duration (days)"].sum()
 
-            act_summaryDF.loc["Average Duration (min)", "Total"] = summaryDF.loc[act, "Average Duration (min)"]
-            act_summaryDF.loc["Total Moving Time (hours)", "Total"] = act_summaryDF.loc["Total Moving Time (hours)"].sum()
-            act_summaryDF.loc["Total Moving Time (days)", "Total"] = act_summaryDF.loc["Total Moving Time (days)"].sum()
-            act_summaryDF.loc["Average Moving Time (min)", "Total"] = summaryDF.loc[act, "Average Moving Time (min)"]
-            act_summaryDF.loc["Average Speed (mph)", "Total"] = summaryDF.loc[act, "Average Speed (mph)"]
-            act_summaryDF.loc["Average Speed (kph)", "Total"] = summaryDF.loc[act, "Average Speed (kph)"]
-            act_summaryDF.loc["Max Speed (mph)", "Total"] = act_summaryDF.loc["Max Speed (mph)"].max()
-            act_summaryDF.loc["Max Speed (kph)", "Total"] = act_summaryDF.loc["Max Speed (kph)"].max()
-            act_summaryDF.loc["Max Speed Date", "Total"] = summaryDF.loc[act, "Max Speed Date"]
-            act_summaryDF.loc["Max Elevation Gain(ft)", "Total"] = summaryDF.loc[act, "Max Elevation Gain(ft)"]
-            act_summaryDF.loc["Max Elevation Gain(m)", "Total"] = summaryDF.loc[act, "Max Elevation Gain(m)"]
-            act_summaryDF.loc["Max Elevation Gain Date", "Total"] = summaryDF.loc[act, "Max Elevation Gain Date"]
-            act_summaryDF.loc["Max Heart Rate", "Total"] = summaryDF.loc[act, "Max Heart Rate"]
-            act_summaryDF.loc["Max HR Date", "Total"] = summaryDF.loc[act, "Max HR Date"]
+                act_summaryDF.loc["Average Duration (min)", "Total"] = summaryDF.loc[act, "Average Duration (min)"]
+                act_summaryDF.loc["Total Moving Time (hours)", "Total"] = act_summaryDF.loc["Total Moving Time (hours)"].sum()
+                act_summaryDF.loc["Total Moving Time (days)", "Total"] = act_summaryDF.loc["Total Moving Time (days)"].sum()
+                act_summaryDF.loc["Average Moving Time (min)", "Total"] = summaryDF.loc[act, "Average Moving Time (min)"]
+                act_summaryDF.loc["Average Speed (mph)", "Total"] = summaryDF.loc[act, "Average Speed (mph)"]
+                act_summaryDF.loc["Average Speed (kph)", "Total"] = summaryDF.loc[act, "Average Speed (kph)"]
+                act_summaryDF.loc["Max Speed (mph)", "Total"] = act_summaryDF.loc["Max Speed (mph)"].max()
+                act_summaryDF.loc["Max Speed (kph)", "Total"] = act_summaryDF.loc["Max Speed (kph)"].max()
+                act_summaryDF.loc["Max Speed Date", "Total"] = summaryDF.loc[act, "Max Speed Date"]
+                act_summaryDF.loc["Max Elevation Gain(ft)", "Total"] = summaryDF.loc[act, "Max Elevation Gain(ft)"]
+                act_summaryDF.loc["Max Elevation Gain(m)", "Total"] = summaryDF.loc[act, "Max Elevation Gain(m)"]
+                act_summaryDF.loc["Max Elevation Gain Date", "Total"] = summaryDF.loc[act, "Max Elevation Gain Date"]
+                act_summaryDF.loc["Max Heart Rate", "Total"] = summaryDF.loc[act, "Max Heart Rate"]
+                act_summaryDF.loc["Max HR Date", "Total"] = summaryDF.loc[act, "Max HR Date"]
 
-            # Print the annual summary
-            act_summaryDF.to_csv(act + "-by-year.csv")
+                # Print the annual summary
+                act_summaryDF.to_csv(act + "-by-year.csv")
 
-        # Print the summary to a csv
+            # Print the summary to a csv
 
-        summaryDF.to_csv("strava-summary.csv")
+            summaryDF.to_csv("strava-summary.csv")
 
 
-    def predict_avg_speed(self, elev_gain, distance, lower_speed_filter=0, upper_speed_filter=float("inf"), lower_distance_filter=0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
-        """This method takes the total elevation gain of a proposed route (in feet or meters) and the distance of that route (in miles or kilometers) to predict what your average speed will be based on past performance. It does this by generating three different models (because I haven't decided on a best model yet). The first is based on a linear regression where the independent variable is average elevation gain which is just the total elevation gain of an activity (in feet or meters) divided by the distance (in miles or kilometers). The dependent variable is average speed. The second model is based on a multivariate linear regression using elevation gain and distance. The third model is just the average of the average speeds of activities with a similar distance and elevation profile.  The *_filter parameters allow you to specify activities to ignore. For example, if you don't want to include slow bike rides with your kids in your model, set the lower_speed_filter to a speed lower than your usual average speed on solo rides. model_start_year allows you to specify what data you want to include in your modeling. If you only want to include bike rides from 2020 on, for example, set model_start_year to 2020. The fudge factors let you define what it means for an activity to be similar to another in the third model. The defaults are both 0.1. This means that an activity is considered similar if it has a distance and average elevation gain within plus or minus 10% of the those of the activity you are interested in. The metric parameter lets you toggle between Imperial and metric. The default is Imperial. activity_type let's you set what type of activity you are modeling. The default is Ride. If you want to model a different activity, set the activity_type to be exactly as Strava names it: Ride, Hike, Kayaking, Canoeing, etc."""
+    def predict_avg_speed(self, *, elev_gain, distance, lower_speed_filter=0, upper_speed_filter=float("inf"), lower_distance_filter=0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
+        """
+        Uses past performance to predict the average speed of a route given its elevation
+        gain and distance in either Imperial or metric units.
+
+        It generates three different models and makes a prediction from each.
+        The first is based on a linear regression where the independent variable is
+        average elevation gain of an activity (total elevation gain divided by total
+        distance). The dependent variable is average speed. The second model is based
+        on a multivariate linear regression using elevation gain and distance. The third
+        model is the average of the average speeds of activities with a similar
+        distance and elevation profiles.  The filter parameters allow you to specify
+        activities to ignore. For example, if you don't want to include slow bike rides
+        in your model, set the lower_speed_filter to a speed lower than your usual
+        average speed. model_start_year allows you to specify what data you want to
+        include in your modeling. If you only want to include bike rides from 2020 on,
+        for example, set model_start_year to 2020. The fudge factors let you define what
+        it means for an activity to be similar to another in the third model. The defaults
+        are both 0.1. This means that an activity is considered similar if it has a distance
+        and average elevation gain within plus or minus 10% of the those of the activity you
+        are interested in. The metric parameter lets you toggle between Imperial and metric.
+        The default is Imperial. activity_type let's you set what type of activity you are
+        modeling. The default is Ride. If you want to model a different activity, set the
+        activity_type to be exactly as Strava names it: Ride, Hike, Kayaking, Canoeing, etc.
+        The method also creates a plot of average speed versus average elevation gain and saves
+        it as a png file in the current directory.
+
+        Parameters
+        ----------
+        elev_gain : float
+            The elevation gain of the proposed route
+        distance: float
+            The distance of the proposed route
+        lower_speed_filter : float, optional
+            Allows you to specify that activities with speeds below the filter should not be
+            included in the modeling (default is 0)
+        upper_speed_filter : float, optional
+            Allows you to specify that activities with speeds above the filter should not be
+            included in the modeling (default is infinity)
+        lower_distance_filter : float, optional
+            Allows you to specify that activities with distances below the filter should not be
+            included in the modeling (default is 0)
+        upper_distance_filter : float, optional
+            Allows you to specify that activities with distances above the filter should not be
+            included in the modeling (default is infinity)
+        model_start_year : int, optional
+            Allows you to indicate that activities that occurred before a certain year should
+            not be included in the modeling (default is 1970)
+        dist_fudge : float, optional
+            Defines what it means for a ride to have a similar distance to another (default is 0.1)
+        elev_fudge : float, optional
+            Defines what it means for a ride to have a similar elevation gain to another (default is 0.1)
+        metric : bool, optional
+            Flag that specifies whether to use the metric system (default is False)
+        activity_type : str, optional
+            The activity type that you are interested in (default is "Ride")
+
+        Returns
+        -------
+        list
+            a list of three floats that are the predicted average speeds of the proposed route
+            using the three different models
+        """
 
         # Set the name of the csv file to use.
         csv_file = activity_type + ".csv"
 
         # First read the Ride data from the appropriate csv file and build a pandas DataFrame.
-        # Put it in a try statement to catch the situation where Ride.csv does not exist.
+        # Put it in a try statement to catch the situation where the csv file does not exist.
         try :
             actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
+        except FileNotFoundError:
+            print(csv_file, "file does not exist. Record some of that activity and try again.")
+            return None
+        else :
+            # The file exists.
             # Make the appropriate adjustments for Imperial or metric.
             if not metric :
                 speed_key = "average_speed(mph)"
@@ -421,26 +615,28 @@ class StravaAnalyzer :
                 elev_gain_key = "total_elevation_gain"
                 speed_unit = "kph"
 
-            # Clean up the data to filter out irrelevant rides. I've put in a lower and upper
+            # Clean up the data to filter out irrelevant rides. I've put in lower and upper
             # speed filters and lower and upper distance filters because I want these models
-            # to ignore rides that I have taken with my family (which are slower than my solo rides)
-            # and short rides in which I have not yet fully warmed up. If I want to get a sense of how
-            # long a family ride will take, I use the upper filters to ignore my solo rides.
+            # to ignore certain activities (for example, rides that I have taken with my family
+            # which are slower than my solo rides
+            # and short rides in which I have not yet fully warmed up).
             filteredDF = actDF[ (actDF[speed_key] > lower_speed_filter) &
                                  (actDF[speed_key] < upper_speed_filter) &
                                  (actDF[dist_key] > lower_distance_filter) &
                                  (actDF[dist_key] < upper_distance_filter) &
                                  (actDF["start_date"] >= datetime.datetime(year = model_start_year, month = 1, day=1, tzinfo=pytz.utc))]
             avg_elev_gain = elev_gain/distance
-            # For kicks let's plot average speed versus average elevation gain and
-            # add in a line showing the linear regression.
-            fig, ax = plt.subplots()
-            ax.scatter(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
+            # Models 1 and 2 only work for activity types in which there is elevation gain.
+            # So check for that before proceeding.
             pred1 = 0.0
             pred2 = [0.0]
             if filteredDF[avg_elev_gain_key].sum() > 0:
+                # We have an activity with elevation gain.
+                # For kicks let's plot average speed versus average elevation gain and
+                # add in a line showing the linear regression.
+                fig, ax = plt.subplots()
+                ax.scatter(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
                 lin = linregress(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
-                #max_avg_elev_gain = 100
                 max_avg_elev_gain = filteredDF[avg_elev_gain_key].max()
                 x = np.arange(0,max_avg_elev_gain)
                 y = x*lin.slope + lin.intercept
@@ -473,6 +669,7 @@ class StravaAnalyzer :
                 print("Moving time would equal", math.floor(distance/pred2[0]), "hours and", round(((distance%pred2[0])/pred2[0])*60), "minutes.")
             else:
                 print("Sorry. Can't use Models 1 and 2 if there is no elevation gain.")
+
             # To make the prediction based on similar activities we need to filter the data more
             # to include only activities that are similar to the one we're asking about in terms
             # of distance and average elevation gain. Here's where we use the fudge factors.
@@ -488,5 +685,87 @@ class StravaAnalyzer :
                 print("There were no similar activities. Perhaps try more generous fudge factors.")
 
             return [pred1, pred2[0], pred3]
+
+
+
+    def suggest_similar_activities(self, *, elev_gain=None, distance=None, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
+        """
+        Takes an elevation gain and distance and returns a list of URLs of your past Strava activities
+        that have similar elevation gain and distance.
+
+        The fudge factors let you define the degree of similarity. The defaults are 0.1.
+        The default units are feet of elevation gain and miles of distance, but if you set
+        the metric flag to True, the units are meters of elevation gain and kilometers of
+        distance. Finally, the default activity is Ride. To specify a different activity type,
+        set the activity_type parameter to it. Just make sure you name it the same as Strava does.
+
+        Parameters
+        ----------
+        elev_gain : float, optional
+            The elevation gain of the activity you want a suggestion for (default is None, but
+            elev_gain and distance can't both be None)
+        distance: float, optional
+            The distance of the activity you want a suggestion for (default is None, but
+            elev_gain and distance can't both be None)
+        dist_fudge : float, optional
+            Defines what it means for a ride to have a similar distance to another (default is 0.1)
+        elev_fudge : float, optional
+            Defines what it means for a ride to have a similar elevation gain to another (default is 0.1)
+        metric : bool, optional
+            Flag that specifies whether to use the metric system (default is False)
+        activity_type : str, optional
+            The activity type that you are interested in (default is "Ride")
+
+        Returns
+        -------
+        list
+            list of URLs of your past Strava activites that have similar
+            elevation gain and distance.
+        """
+
+        # You need to have at least one of elevation gain and distance.
+        if elev_gain == None and distance == None :
+            raise ValueError("elev_gain and distance can't both equal None.")
+
+        csv_file = activity_type + ".csv"
+        try:
+            actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
         except FileNotFoundError:
             print(csv_file, "file does not exist. Record some of that activity and try again.")
+        else:
+            # Sort out what units we're using.
+            if not metric :
+                dist_key = "distance(miles)"
+                elev_gain_key = "elevation_gain(ft)"
+                dist_units = "miles"
+                elev_units = "feet"
+            else:
+                dist_key = "distance(km)"
+                elev_gain_key = "total_elevation_gain"
+                dist_units = "km"
+                elev_units = "meters"
+
+            # Deal with three situations: We have elevation gain and distance. We have
+            # elevation but not distance. We have distance but not elevation.
+            # We don't need to test if both are None because
+            # we did that above.
+            if elev_gain and distance :
+                similarDF = actDF[ (actDF[dist_key] >= distance - dist_fudge*distance) & (actDF[dist_key] <= distance + dist_fudge*distance) & (actDF[elev_gain_key] >= elev_gain - elev_fudge*elev_gain) & (actDF[elev_gain_key] <= elev_gain + elev_fudge*elev_gain)  ]
+                print("\nActivities with elevation gain similar to", elev_gain, elev_units, "and distance similar to", distance, dist_units, ":\n")
+            elif not distance :
+                similarDF = actDF[ (actDF[elev_gain_key] >= elev_gain - elev_fudge*elev_gain) & (actDF[elev_gain_key] <= elev_gain + elev_fudge*elev_gain)  ]
+                print("Activities with elevation gain similar to", elev_gain, elev_units, ":")
+            elif not elev_gain:
+                similarDF = actDF[ (actDF[dist_key] >= distance - dist_fudge*distance) & (actDF[dist_key] <= distance + dist_fudge*distance) ]
+                print("Activities with distance similar to", distance, dist_units,":")
+
+            list_of_urls = []
+            if len(similarDF) > 0 :
+                for i in similarDF.index:
+                    act_url = "https://www.strava.com/activities/" + str(i)
+                    list_of_urls.append(act_url)
+                    print(similarDF.loc[i, "name"], f'{similarDF.loc[i,dist_key]:.2f}', dist_units,  f'{similarDF.loc[i,elev_gain_key]:.2f}', elev_units)
+                    print(act_url + "\n")
+            else:
+                print("No activities with elevation gain similar to ", elev_gain, "and distance similar to", distance)
+            return list_of_urls
