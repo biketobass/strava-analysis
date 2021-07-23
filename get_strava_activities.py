@@ -3,8 +3,6 @@ import strava
 # First create a StravaAnalyzer object
 sa = strava.StravaAnalyzer()
 
-
-# ----------- for GitHub
 # Uncomment the line below if you want to retrieve your Strava profile data.
 #sa.get_strava_profile()
 
