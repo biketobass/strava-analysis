@@ -526,7 +526,7 @@ class StravaAnalyzer :
             summaryDF.to_csv("strava-summary.csv")
 
 
-    def predict_avg_speed(self, *, elev_gain, distance, lower_speed_filter=0.0, upper_speed_filter=float("inf"), lower_distance_filter=0.0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
+    def predict_avg_speed(self, *, elev_gain, distance, lower_speed_filter=0.0, upper_speed_filter=float("inf"), lower_distance_filter=0.0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride", fig_flag=True) :
         """
         Uses past performance to predict the average speed of a route given its elevation
         gain and distance in either Imperial or metric units.
@@ -551,7 +551,7 @@ class StravaAnalyzer :
         modeling. The default is Ride. If you want to model a different activity, set the
         activity_type to be exactly as Strava names it: Ride, Hike, Kayaking, Canoeing, etc.
         The method also creates a plot of average speed versus average elevation gain and saves
-        it as a png file in the current directory.
+        it as a png file in the current directory if fig_flag is True.
 
         Parameters
         ----------
@@ -582,6 +582,9 @@ class StravaAnalyzer :
             Flag that specifies whether to use the metric system (default is False)
         activity_type : str, optional
             The activity type that you are interested in (default is "Ride")
+        fig_flag : bool, optional
+            Flag that specifies whether to generate a plot showing average speed versus average
+            elevation gain (default is True)
 
         Returns
         -------
@@ -633,26 +636,26 @@ class StravaAnalyzer :
             pred2 = [0.0]
             if filteredDF[avg_elev_gain_key].sum() > 0:
                 # We have an activity with elevation gain.
-                # For kicks let's plot average speed versus average elevation gain and
-                # add in a line showing the linear regression.
-                fig, ax = plt.subplots()
-                ax.scatter(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
+                # Do linear regression on avg  elevation gain and speed
                 lin = linregress(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
                 max_avg_elev_gain = filteredDF[avg_elev_gain_key].max()
-                x = np.arange(0,max_avg_elev_gain)
-                y = x*lin.slope + lin.intercept
-                ax.plot(x,y, color='red')
-                ax.set_title("Average Speed vs. Average Elevation Gain - " + activity_type)
-                if not metric:
-                    ax.set_xlabel("Average elevation gain (ft) per mile")
-                    ax.set_ylabel("Average Speed (mph)")
-                else:
-                    ax.set_xlabel("Average elevation gain (meters) per km")
-                    ax.set_ylabel("Average Speed (kph)")
-                if not metric :
-                    fig.savefig(activity_type+"-AvgSpeedVsAvgElevGainImperial.png")
-                else :
-                    fig.savefig(activity_type+"-AvgSpeedVsAvgElevGainMetric.png")
+                # For kicks let's plot average speed versus average elevation gain and
+                # add in a line showing the linear regression.
+                if fig_flag :
+                    x = np.arange(0,max_avg_elev_gain)
+                    y = x*lin.slope + lin.intercept
+                    fig, ax = plt.subplots()
+                    ax.scatter(filteredDF[avg_elev_gain_key], filteredDF[speed_key])
+                    ax.plot(x,y, color='red')
+                    ax.set_title("Average Speed vs. Average Elevation Gain - " + activity_type)
+                    if not metric:
+                        ax.set_xlabel("Average elevation gain (ft) per mile")
+                        ax.set_ylabel("Average Speed (mph)")
+                        fig.savefig(activity_type+"-AvgSpeedVsAvgElevGainImperial.png")
+                    else:
+                        ax.set_xlabel("Average elevation gain (meters) per km")
+                        ax.set_ylabel("Average Speed (kph)")
+                        fig.savefig(activity_type+"-AvgSpeedVsAvgElevGainMetric.png")
                 # Now do the multivariate regression.
                 Indep = filteredDF[[elev_gain_key, dist_key]]
                 dep = filteredDF[speed_key]
