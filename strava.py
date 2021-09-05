@@ -35,7 +35,7 @@ class StravaAnalyzer :
         Create a CSV file for each activity type, a csv file with summary statistics for all activities, and a file for each activity type that shows a year by year summary for that type.
     predict_avg_speed(*, elev_gain, distance, lower_speed_filter=0, upper_speed_filter=float("inf"), lower_distance_filter=0, upper_distance_filter=float("inf"), model_start_year=1970, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride")
         Predict the expected average speed of a proposed route given elevation gain and distance.
-    suggest_similar_activities(*, elev_gain=None, distance=None, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride")
+    suggest_similar_activities(*, elev_gain=None, distance=None, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride", open_web=False)
         Returns a list of URLs of your previously uploaded activities with similar distance and elevation gain to those specified.
 
     """
