@@ -6,6 +6,8 @@ import datetime
 from dateutil import parser
 import pytz
 import math
+# new
+import webbrowser
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,7 +42,8 @@ class StravaAnalyzer :
 
     # Constructor
     def __init__(self, offline=False) :
-        """Create a new StravaAnalyzer object.
+        """
+        Create a new StravaAnalyzer object.
 
         When the object is created, the constructor makes sure it has the
         the tokens necessary to connect to Strava and that they
@@ -692,7 +695,7 @@ class StravaAnalyzer :
 
 
 
-    def suggest_similar_activities(self, *, elev_gain=None, distance=None, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride") :
+    def suggest_similar_activities(self, *, elev_gain=None, distance=None, dist_fudge=0.1, elev_fudge=0.1, metric=False, activity_type="Ride", open_web=False) :
         """
         Takes an elevation gain and a distance and returns a list of URLs of your past Strava activities
         that have similar elevation gain and distance.
@@ -719,6 +722,8 @@ class StravaAnalyzer :
             Flag that specifies whether to use the metric system (default is False)
         activity_type : str, optional
             The activity type that you are interested in (default is "Ride")
+        open_web : Boolean, optional
+            Flag that specifies whether to open the similar activities in new tabs of your default browser.
 
         Returns
         -------
@@ -767,6 +772,9 @@ class StravaAnalyzer :
             if len(similarDF) > 0 :
                 for i in similarDF.index:
                     act_url = "https://www.strava.com/activities/" + str(i)
+                    # new
+                    if open_web :
+                        webbrowser.open_new_tab(act_url)
                     list_of_urls.append(act_url)
                     print(similarDF.loc[i, "name"], f'{similarDF.loc[i,dist_key]:.2f}', dist_units,  f'{similarDF.loc[i,elev_gain_key]:.2f}', elev_units)
                     print(act_url + "\n")
