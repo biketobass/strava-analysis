@@ -40,4 +40,8 @@ Added the `suggest_similar_activities()` method. Given an elevation gain and dis
 Edit: 9/5/2021
 
 Added the `open_web` flag to `suggest_similar_activities()`. If
-`True`, the method will open the Strava activity pages of the similar routes in new tabs in your default browser. Make sure that you are logged into Strava if you are using this. I also suggest running the method first with the flag set to `False`. Otherwise, if the list of similar activities is long, you may be overwhelmed by new tabs.
+`True`, the method will open the Strava activity pages of the similar
+routes in new tabs in your default browser. Make sure that you are
+logged into Strava if you are using this. I also suggest running the
+method first with the flag set to `False`. Otherwise, if the list of
+similar activities is long, you may be overwhelmed by new tabs.
