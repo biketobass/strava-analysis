@@ -500,6 +500,7 @@ class StravaAnalyzer :
                         else:
                             act_summaryDF.loc["Max HR Date", y] = None
                 # Add a few totals
+                act_summaryDF['Total'] = act_summaryDF[years[-1]]
                 act_summaryDF.loc["Total Distance (miles)", "Total"] = act_summaryDF.loc["Total Distance (miles)"].sum()
                 act_summaryDF.loc["Total Distance (km)", "Total"] = act_summaryDF.loc["Total Distance (km)"].sum()
                 act_summaryDF.loc["Total Elev. Gain (meters)", "Total"] = act_summaryDF.loc["Total Elev. Gain (meters)"].sum()
