@@ -310,10 +310,13 @@ class StravaAnalyzer :
 
             # Otherwise create a dataframe from the json. This holds
             # only the results from this particular page of results.
-            actsDF = pd.DataFrame.from_dict(r, orient='columns')
+            try :
+                actsDF = pd.DataFrame.from_dict(r, orient='columns')
+            except ValueError:
+                print("Ack: Value Error: Here's the dict ", r)
             actsDF.set_index("id", inplace=True)
             # Now put all of those into the main storage DF.
-            resultsDF = resultsDF.append(actsDF)
+            resultsDF = pd.concat([resultsDF, actsDF])
 
             # increment page.
             # Also check the time and number of calls.
@@ -364,7 +367,7 @@ class StravaAnalyzer :
                 # To be totally honest, we're not actually appending to the CSV.
                 # We're appending all of the old activities to  all of the new ones
                 # and then recreating the CSV file. It amounts to the same thing.
-                resultsDF = resultsDF.append(existingDF)
+                resultsDF = pd.concat([resultsDF, existingDF])
                 resultsDF.to_csv(csv_file)
         else:
             print("There were no new results. Not writing CSV.")
