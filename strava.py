@@ -10,6 +10,7 @@ import math
 import webbrowser
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 from scipy.stats import linregress
 from sklearn import linear_model
@@ -62,65 +63,64 @@ class StravaAnalyzer :
         """
 
         # First check to see if the offline flag is True. If so, don't try to go online.
-        if offline :
-            self.separate_activity_types()
-            return
-
-        # We think we have Internet.
-        # Check if the tokens have expired.
-        print("Checking if tokens have expired.")
-        try :
-            with open('strava_tokens.json') as json_file:
-                self.strava_tokens = json.load(json_file)
-        except FileNotFoundError:
-            print('strava_tokens.json does not exist yet. Consult the Readme and run get_strava_tokens.py before using this class. You only need to run get_strava_tokens.py once. Exiting.')
-            quit()
-
-        # If access_token has expired, use the refresh_token to get the new access_token
-        if self.strava_tokens['expires_at'] < time.time():
-            print("They expired. Updating...")
-            # Make Strava auth API call with current refresh token
-            # Your client ID and secret are stored in
-            # secret_stuff.json that was created when you ran get_strava_tokens.py.
-            try:
-                with open('secret_stuff.json') as secret_file:
-                    secret_dict = json.load(secret_file)
+        if not offline :
+            # We think we have Internet.
+            # Check if the tokens have expired.
+            print("Checking if tokens have expired.")
+            try :
+                with open('strava_tokens.json') as json_file:
+                    self.strava_tokens = json.load(json_file)
             except FileNotFoundError:
-                print("The client ID and client secret haven't been saved to disk yet. Consult the Readme and run get_strava_tokens.py before using this class. You only need to run get_strava_tokens.py once. Exiting.")
+                print('strava_tokens.json does not exist yet. Consult the Readme and run get_strava_tokens.py before using this class. You only need to run get_strava_tokens.py once. Exiting.')
                 quit()
 
-            # Make the request and get the response..
-            try :
-                response = requests.post(
-                    url = 'https://www.strava.com/oauth/token',
-                    data = {
-                        'client_id': secret_dict['client_id'],
-                        'client_secret': secret_dict['client_secret'],
-                        'grant_type': 'refresh_token',
-                        'refresh_token': self.strava_tokens['refresh_token']
-                    }
-                )
-            except requests.exceptions.RequestException as e:
-                # There's a problem with the Internet connection so behave as if offline is True
-                # and stop trying to go online.
-                print ("Could not make the API request when refreshing tokens. Received this exception:", e)
-                print("Data will not be updated. Working offline.")
-                self.separate_activity_types()
-                return
+            # If access_token has expired, use the refresh_token to get the new access_token
+            if self.strava_tokens['expires_at'] < time.time():
+                print("They expired. Updating...")
+                # Make Strava auth API call with current refresh token
+                # Your client ID and secret are stored in
+                # secret_stuff.json that was created when you ran get_strava_tokens.py.
+                try:
+                    with open('secret_stuff.json') as secret_file:
+                        secret_dict = json.load(secret_file)
+                except FileNotFoundError:
+                    print("The client ID and client secret haven't been saved to disk yet. Consult the Readme and run get_strava_tokens.py before using this class. You only need to run get_strava_tokens.py once. Exiting.")
+                    quit()
 
-            # Replace the old strava_tokens with the response.
-            self.strava_tokens = response.json()
-            # Save new tokens to file
-            with open('strava_tokens.json', 'w') as outfile:
-                json.dump(self.strava_tokens, outfile)
-        else:
-            print("No need to update tokens.")
+                # Make the request and get the response..
+                try :
+                    response = requests.post(
+                        url = 'https://www.strava.com/oauth/token',
+                        data = {
+                            'client_id': secret_dict['client_id'],
+                            'client_secret': secret_dict['client_secret'],
+                            'grant_type': 'refresh_token',
+                            'refresh_token': self.strava_tokens['refresh_token']
+                        }
+                    )
+                except requests.exceptions.RequestException as e:
+                    # There's a problem with the Internet connection so behave as if offline is True
+                    # and stop trying to go online.
+                    print ("Could not make the API request when refreshing tokens. Received this exception:", e)
+                    print("Data will not be updated. Working offline.")
+                    self.separate_activity_types()
+                    return
 
-        # Now that that's done, go and fetch all of your activities from Strava.
-        # If you've done this before, get_all_activities will just update the relevant CSV
-        # file with new activities. It doesn't download everything again.
-        self.get_all_activities()
-        # And now separate out the different activity types and get summary info for each.
+                # Replace the old strava_tokens with the response.
+                self.strava_tokens = response.json()
+                # Save new tokens to file
+                with open('strava_tokens.json', 'w') as outfile:
+                    json.dump(self.strava_tokens, outfile)
+            else:
+                print("No need to update tokens.")
+
+            # Now that that's done, go and fetch all of your activities from Strava.
+            # If you've done this before, get_all_activities will just update the relevant CSV
+            # file with new activities. It doesn't download everything again.
+            self.get_all_activities()
+        # And now separate out the different activity types and get summary info for each,
+        # doing some feature engineering along the way.
+        self.add_features()
         self.separate_activity_types()
 
 
@@ -373,6 +373,31 @@ class StravaAnalyzer :
             print("There were no new results. Not writing CSV.")
 
         return resultsDF
+
+    def add_features(self) :
+        # Read in the CSV file and make a DataFrame.
+        try :
+            all_actsDF = pd.read_csv('strava-activities.csv', index_col="id", parse_dates=["start_date", "start_date_local"])
+        except FileNotFoundError :
+            print("add_features couldn't find strava-activities.csv.")
+        else :
+            # Add a month column to the DF.
+            all_actsDF['start_date_local'] = pd.to_datetime(all_actsDF['start_date_local'], format='ISO8601')
+            all_actsDF['start_date'] = pd.to_datetime(all_actsDF['start_date'], format='ISO8601')
+            all_actsDF['month'] = all_actsDF['start_date_local'].dt.strftime('%b')
+            all_actsDF['year'] = all_actsDF['start_date_local'].dt.year
+            all_actsDF['month_num'] = all_actsDF['start_date_local'].dt.month
+            def find_season(m) :
+                if 1 <= m <= 3 :
+                    return 'winter'
+                elif 4 <= m <= 6 :
+                    return 'spring'
+                elif 7 <= m <= 9 :
+                    return 'summer'
+                else :
+                    return 'fall'
+            all_actsDF['season'] = all_actsDF['month_num'].apply(find_season)
+            all_actsDF.to_csv("strava-activities.csv")
 
 
     def separate_activity_types(self):
@@ -785,3 +810,86 @@ class StravaAnalyzer :
             else:
                 print("No activities with elevation gain similar to ", elev_gain, "and distance similar to", distance)
             return list_of_urls
+        
+        
+    def make_activity_figures(self, activity_type="Ride", metric=False, year_list=None) :
+        csv_file = activity_type + ".csv"
+        try :
+            actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
+        except FileNotFoundError:
+            print(csv_file, "file does not exist. Record some of that activity and try again.")
+            return None
+        else :
+            # The file exists.
+            # Let's make some figures
+            # Box plots
+            if not metric :
+                features = [('distance(miles)', 'Distance in miles'), ('elevation_gain(ft)', 'Total Elevation Gain in Feet')]
+            else :
+                features = [('distance(km)', 'Distance in km'), ('total_elevation_gain', 'Total Elevation Gain in Meters')]
+            for feature in features :
+                fig, axes = plt.subplots(nrows=2, ncols=1)
+                sns.boxplot(data=actDF, x=feature[0], y='month', ax=axes[0])
+                axes[0].set_xlabel(activity_type + feature[1])
+                axes[0].set_title("Box Plot of " + activity_type + " " + feature[1])
+                sns.histplot(data=actDF, x=feature[0], hue='month', multiple='dodge', ax=axes[1])
+                fig.savefig((activity_type+"_" +feature[0] + ".png"))
+                plt.close()
+            # Barplots
+            actDF_subset = actDF[['year', 'month', 'month_num', 'distance(miles)', 'distance(km)', 'total_elevation_gain', 'elevation_gain(ft)']]
+            if year_list :
+                actDF_subset = actDF_subset[actDF_subset['year'].isin(year_list)]
+            fig, ax = plt.subplots(figsize=(30,20))
+            dist_by_year = actDF_subset.groupby(by='year').sum().reset_index()
+            if not metric :
+                max_dist_in_year = dist_by_year['distance(miles)'].max()
+                sns.barplot(data=dist_by_year, x='year', y='distance(miles)', ax=ax)
+                ax.set_ylabel("Distance in Miles", fontsize=25)
+                ax.set_title("Miles per Year ("+activity_type+")", fontsize=30)
+            else :
+                max_dist_in_year = dist_by_year['distance(km)'].max()
+                sns.barplot(data=dist_by_year, x='year', y='distance(km)', ax=ax)
+                ax.set_ylabel("Distance in KM", fontsize=25)
+                ax.set_title("Kilometers per Year ("+activity_type+")")
+            tick_step = 250
+            y_lim_max = max_dist_in_year + tick_step // 2
+            ax.set_ylim((0,y_lim_max))
+            yticks = np.arange(0,y_lim_max, tick_step)
+            ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
+            ax.set_xlabel("Year", fontsize=25)
+            ax.set_xticks(ticks=dist_by_year.index, labels=dist_by_year['year'], fontsize=25)
+            ax.bar_label(ax.containers[0], fmt='{:,.0f}', fontsize=16)
+            plt.tight_layout()
+            fig.savefig(activity_type+"_distance_bar_by_year.png")
+            plt.close()
+            
+            months = actDF_subset.groupby(['month_num', 'month']).count()
+            month_df = pd.DataFrame(months.index.to_list(), columns=months.index.names)
+            fig, ax = plt.subplots(figsize=(30,20))
+            dist_by_year_month = actDF_subset.groupby(by=['year', 'month_num']).sum().reset_index()
+            sns.set_style("whitegrid")
+            if not metric :
+                max_dist_in_month = dist_by_year_month['distance(miles)'].max()
+                sns.barplot(data=dist_by_year_month, x='month_num', y='distance(miles)', hue='year', ax=ax, palette='deep')
+                ax.set_ylabel("Distance in Miles", fontsize=25)
+                ax.set_title("Miles per Month per Year ("+activity_type+")", fontsize=30)
+            else :
+                max_dist_in_month = dist_by_year_month['distance(km)'].max()
+                sns.barplot(data=dist_by_year_month, x='month_num', y='distance(km)', hue='year', ax=ax, palette='deep')
+                ax.set_ylabel("Distance in KM", fontsize=25)
+                ax.set_title("Kilometers per Month per Year ("+activity_type+")", fontsize=30)
+            ax.set_xticks(ticks=month_df.index, labels=month_df['month'], fontsize=25)
+            tick_step = 50
+            y_lim_max = max_dist_in_month+tick_step // 2
+            yticks=np.arange(0,y_lim_max, tick_step)
+            ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
+            ax.set_xlabel("Month", fontsize=25)
+            ax.set_ylim((0,y_lim_max))
+            for container in ax.containers :
+                ax.bar_label(container, fmt='{:,.0f}', fontsize=16)
+            ax.legend(fontsize=20)
+            plt.tight_layout()
+            plt.grid()
+            fig.savefig(activity_type+"_distance_bar_by_year_month.png")
+            plt.close()
+            

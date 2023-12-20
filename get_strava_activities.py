@@ -1,8 +1,9 @@
 import strava
 
 # First create a StravaAnalyzer object
-sa = strava.StravaAnalyzer()
-
+sa = strava.StravaAnalyzer(offline=False)
+sa.make_activity_figures(metric=False)
+#sa.make_figures(metric=False, year_list=[2023, 2022, 2021, 2020])
 # Uncomment the line below if you want to retrieve your Strava profile data.
 #sa.get_strava_profile()
 
