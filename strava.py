@@ -417,19 +417,18 @@ class StravaAnalyzer :
                     return 'fall'
                 else :
                     return 'winter'
-                #elif win_start <= dt <= win_end :
-                #    return 'winter'
                 
-                # if 1 <= m <= 3 :
-                #     return 'winter'
-                # elif 4 <= m <= 6 :
-                #     return 'spring'
-                # elif 7 <= m <= 9 :
-                #     return 'summer'
-                # else :
-                #     return 'fall'
-            #all_actsDF['season'] = all_actsDF['month_num'].apply(find_season)
             all_actsDF['season'] = all_actsDF['start_date_local'].apply(find_season)
+            def get_season_num(season) :
+                if season == 'winter' :
+                    return 1
+                elif season == 'spring' :
+                    return 2
+                elif season == 'summer' :
+                    return 3
+                else :
+                    return 4
+            all_actsDF['season_num'] = all_actsDF['season'].apply(get_season_num)
             all_actsDF.to_csv("strava-activities.csv")
 
 
@@ -869,9 +868,11 @@ class StravaAnalyzer :
                 fig.savefig((activity_type+"_" +feature[0] + ".png"))
                 plt.close()
             # Barplots
-            actDF_subset = actDF[['year', 'month', 'month_num', 'distance(miles)', 'distance(km)', 'total_elevation_gain', 'elevation_gain(ft)']]
+            actDF_subset = actDF[['year', 'month', 'month_num', 'distance(miles)', 'distance(km)', 'total_elevation_gain', 'elevation_gain(ft)', 'season', 'season_num']]
             if year_list :
                 actDF_subset = actDF_subset[actDF_subset['year'].isin(year_list)]
+                
+            # Make a barplot comparing total distance per year.
             fig, ax = plt.subplots(figsize=(30,20))
             dist_by_year = actDF_subset.groupby(by='year').sum().reset_index()
             if not metric :
@@ -896,6 +897,7 @@ class StravaAnalyzer :
             fig.savefig(activity_type+"_distance_bar_by_year.png")
             plt.close()
             
+            # Now make a barplot that compares distance per month per year.
             months = actDF_subset.groupby(['month_num', 'month']).count()
             month_df = pd.DataFrame(months.index.to_list(), columns=months.index.names)
             fig, ax = plt.subplots(figsize=(30,20))
@@ -924,6 +926,37 @@ class StravaAnalyzer :
             plt.tight_layout()
             plt.grid()
             fig.savefig(activity_type+"_distance_bar_by_year_month.png")
+            plt.close()
+            
+            # Barplot comparing distance per season per year
+            seasons = actDF_subset.groupby(['season_num', 'season']).count()
+            seasons_df = pd.DataFrame(seasons.index.to_list(), columns=seasons.index.names)
+            fig, ax = plt.subplots(figsize=(30,20))
+            dist_by_year_season = actDF_subset.groupby(by=['year', 'season_num']).sum().reset_index()
+            sns.set_style("whitegrid")
+            if not metric :
+                max_dist_in_season = dist_by_year_season['distance(miles)'].max()
+                sns.barplot(data=dist_by_year_season, x='season_num', y='distance(miles)', hue='year', ax=ax, palette='deep')
+                ax.set_ylabel("Distance in Miles", fontsize=25)
+                ax.set_title("Miles per Season per Year ("+activity_type+")", fontsize=30)
+            else :
+                max_dist_in_season = dist_by_year_season['distance(km)'].max()
+                sns.barplot(data=dist_by_year_season, x='season_num', y='distance(km)', hue='year', ax=ax, palette='deep')
+                ax.set_ylabel("Distance in KM", fontsize=25)
+                ax.set_title("Kilometers per Season per Year ("+activity_type+")", fontsize=30)
+            ax.set_xticks(ticks=seasons_df.index, labels=seasons_df['season'], fontsize=25)
+            tick_step = 50
+            y_lim_max = max_dist_in_season + tick_step // 2
+            yticks=np.arange(0,y_lim_max, tick_step)
+            ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
+            ax.set_xlabel("Season", fontsize=25)
+            ax.set_ylim((0,y_lim_max))
+            for container in ax.containers :
+                ax.bar_label(container, fmt='{:,.0f}', fontsize=16)
+            ax.legend(fontsize=20)
+            plt.tight_layout()
+            plt.grid()
+            fig.savefig(activity_type+"_distance_bar_by_year_season.png")
             plt.close()
             
     def make_combined_figures(self) :
