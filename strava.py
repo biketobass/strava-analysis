@@ -359,6 +359,16 @@ class StravaAnalyzer :
             resultsDF["max_speed(mph)"] = resultsDF['max_speed'] * 2.23694
             resultsDF["max_speed(kph)"] = resultsDF['max_speed'] * 3.6
             # Write the dataframe to a csv and return the dataframe.
+            # Convert the dates to datetimes. We need to set the timezone on
+            # start_date_local. It's specified in the next column. The helper function
+            # below takes care of that.
+            def correct_tz(d, tzstring) :
+                #tzstring = '(GMT-05:00) America/New_York'
+                return d.replace(tzinfo=pytz.timezone(tzstring[tzstring.index(' ')+1:]))
+            resultsDF['start_date'] = pd.to_datetime(resultsDF['start_date'])
+            #resultsDF['start_date_local'] = pd.to_datetime(resultsDF['start_date_local']).apply(correct_tz)
+            resultsDF['start_date_local'] = pd.to_datetime(resultsDF['start_date_local'])
+            resultsDF['start_date_local'] = resultsDF[['start_date_local', 'timezone']].apply(lambda x: correct_tz(x['start_date_local'], x['timezone']), axis=1)
             if overwrite or (not file_exists) :
                 print("Writing to", csv_file)
                 resultsDF.to_csv(csv_file)
@@ -382,21 +392,44 @@ class StravaAnalyzer :
             print("add_features couldn't find strava-activities.csv.")
         else :
             # Add a month column to the DF.
-            all_actsDF['start_date_local'] = pd.to_datetime(all_actsDF['start_date_local'], format='ISO8601')
-            all_actsDF['start_date'] = pd.to_datetime(all_actsDF['start_date'], format='ISO8601')
+            all_actsDF['start_date_local'] = pd.to_datetime(all_actsDF['start_date_local'], utc=True)
+            # Need to localize start_date_local again.
+            def localize_again(d, tzstring):
+                tz = pytz.timezone(tzstring[tzstring.index(' ')+1:])
+                return d.astimezone(tz)
+            all_actsDF['start_date_local'] = all_actsDF[['start_date_local', 'timezone']].apply(lambda x: localize_again(x['start_date_local'], x['timezone']), axis=1)
             all_actsDF['month'] = all_actsDF['start_date_local'].dt.strftime('%b')
             all_actsDF['year'] = all_actsDF['start_date_local'].dt.year
             all_actsDF['month_num'] = all_actsDF['start_date_local'].dt.month
-            def find_season(m) :
-                if 1 <= m <= 3 :
-                    return 'winter'
-                elif 4 <= m <= 6 :
+            def find_season(dt) :
+                year = dt.year
+                spr_start = datetime.datetime(year, 3, 21, tzinfo=dt.tzinfo)
+                spr_end = datetime.datetime(year, 6, 20, hour=23, minute=59, second=59, tzinfo=dt.tzinfo)
+                sum_start = datetime.datetime(year, 6, 21, tzinfo=dt.tzinfo)
+                sum_end = datetime.datetime(year, 9, 20, hour=23, minute=59, second=59, tzinfo=dt.tzinfo)
+                fall_start = datetime.datetime(year, 9, 21, tzinfo=dt.tzinfo)
+                fall_end = datetime.datetime(year, 12, 20, hour=23, minute=59, second=59, tzinfo=dt.tzinfo)
+                if spr_start <= dt <= spr_end :
                     return 'spring'
-                elif 7 <= m <= 9 :
+                elif sum_start <= dt <= sum_end :
                     return 'summer'
-                else :
+                elif fall_start <= dt <= fall_end :
                     return 'fall'
-            all_actsDF['season'] = all_actsDF['month_num'].apply(find_season)
+                else :
+                    return 'winter'
+                #elif win_start <= dt <= win_end :
+                #    return 'winter'
+                
+                # if 1 <= m <= 3 :
+                #     return 'winter'
+                # elif 4 <= m <= 6 :
+                #     return 'spring'
+                # elif 7 <= m <= 9 :
+                #     return 'summer'
+                # else :
+                #     return 'fall'
+            #all_actsDF['season'] = all_actsDF['month_num'].apply(find_season)
+            all_actsDF['season'] = all_actsDF['start_date_local'].apply(find_season)
             all_actsDF.to_csv("strava-activities.csv")
 
 
@@ -893,3 +926,48 @@ class StravaAnalyzer :
             fig.savefig(activity_type+"_distance_bar_by_year_month.png")
             plt.close()
             
+    def make_combined_figures(self) :
+        csv_file = "strava-activities.csv"
+        try :
+            actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
+        except FileNotFoundError:
+            print(csv_file, "file does not exist. Record some of that activity and try again.")
+            return None
+        else :
+            # The file exists.
+            # Let's make some figures
+            
+            # Pie chart
+            actDF_subset = actDF[['type', 'moving_time', 'elapsed_time', 'distance', 'total_elevation_gain']]
+            pie_df = actDF_subset.groupby('type').sum().reset_index().sort_values(by='moving_time', ascending=False).reset_index()
+            #pie_df = actDF_subset.groupby('type').sum().reset_index()
+            total_moving_time = actDF['moving_time'].sum()
+            pie_df['moving_time_fraction'] = pie_df['moving_time']/total_moving_time
+#            print(pie_df['moving_time_fraction'])
+            # Group activities that make up less than one percent of the moving time
+            # so that the pie doesn't look too crowded.
+            wedges = []
+            labels = []
+            # This works because pie_df is sorted.
+            for fraction, label in zip(pie_df['moving_time_fraction'], pie_df['type']) :
+                if fraction >= 0.01 :
+                    wedges.append(fraction)
+                    labels.append(label)
+                else :
+                    wedges[-1] += fraction
+                    labels[-1] = 'Other'
+            fig, ax = plt.subplots(figsize=(20,20))
+            #max_index = pie_df['moving_time_fraction'].idxmax()
+            #explode = [0 for i in range(0, len(pie_df['moving_time_fraction']))]
+            explode = [0 for i in range(0, len(wedges))]
+            explode[0] = 0.1
+            #angle = -180 * pie_df['moving_time_fraction'].iloc[3]
+            #angle = 180 * wedges[0]
+            angle = 0
+            #ax.pie(pie_df['moving_time_fraction'], labels=pie_df['type'], autopct='%1.1f%%', textprops={'size': 'xx-large'}, shadow=True, explode=explode)
+            ax.pie(wedges, labels=labels, autopct='%1.1f%%', textprops={'size': 'xx-large'}, shadow=True, explode=explode, startangle=angle)
+            ax.set_title("Percent of Moving Time by Activity Type", fontsize=30)
+            plt.tight_layout()
+            fig.savefig('all_acts_pie.png')
+            plt.close()
+                
