@@ -855,10 +855,16 @@ class StravaAnalyzer :
             # The file exists.
             # Let's make some figures
             # Box plots
+            # In the feature tuples below the last tuple of each is:
+            # 0: y-axis tick step
+            # 1:
+            # 2: 
+            # 3: y_tick_divisor - Use for example if you want 1000s
+            # 4: unit - for example K
             if not metric :
-                features = [('distance(miles)', 'Distance in miles'), ('elevation_gain(ft)', 'Total Elevation Gain in Feet')]
+                features = [('distance(miles)', 'Distance in Miles', (250, 50, 100, 1, "")), ('elevation_gain(ft)', 'Total Elevation Gain in Feet', (10000, 2000, 5000, 1000, 'K'))]
             else :
-                features = [('distance(km)', 'Distance in km'), ('total_elevation_gain', 'Total Elevation Gain in Meters')]
+                features = [('distance(km)', 'Distance in Km', (250, 50, 100, 1, '')), ('total_elevation_gain', 'Total Elevation Gain in Meters', (5000, 2000, 5000, 1000, 'K'))]
             for feature in features :
                 fig, axes = plt.subplots(nrows=2, ncols=1)
                 sns.boxplot(data=actDF, x=feature[0], y='month', ax=axes[0])
@@ -872,92 +878,114 @@ class StravaAnalyzer :
             if year_list :
                 actDF_subset = actDF_subset[actDF_subset['year'].isin(year_list)]
                 
-            # Make a barplot comparing total distance per year.
-            fig, ax = plt.subplots(figsize=(30,20))
-            dist_by_year = actDF_subset.groupby(by='year').sum().reset_index()
-            if not metric :
-                max_dist_in_year = dist_by_year['distance(miles)'].max()
-                sns.barplot(data=dist_by_year, x='year', y='distance(miles)', ax=ax)
-                ax.set_ylabel("Distance in Miles", fontsize=25)
-                ax.set_title("Miles per Year ("+activity_type+")", fontsize=30)
-            else :
-                max_dist_in_year = dist_by_year['distance(km)'].max()
-                sns.barplot(data=dist_by_year, x='year', y='distance(km)', ax=ax)
-                ax.set_ylabel("Distance in KM", fontsize=25)
-                ax.set_title("Kilometers per Year ("+activity_type+")")
-            tick_step = 250
-            y_lim_max = max_dist_in_year + tick_step // 2
-            ax.set_ylim((0,y_lim_max))
-            yticks = np.arange(0,y_lim_max, tick_step)
-            ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
-            ax.set_xlabel("Year", fontsize=25)
-            ax.set_xticks(ticks=dist_by_year.index, labels=dist_by_year['year'], fontsize=25)
-            ax.bar_label(ax.containers[0], fmt='{:,.0f}', fontsize=16)
-            plt.tight_layout()
-            fig.savefig(activity_type+"_distance_bar_by_year.png")
-            plt.close()
-            
-            # Now make a barplot that compares distance per month per year.
+            # Make barplots for the features.
+            df_by_year = actDF_subset.groupby(by='year').sum().reset_index()
             months = actDF_subset.groupby(['month_num', 'month']).count()
             month_df = pd.DataFrame(months.index.to_list(), columns=months.index.names)
-            fig, ax = plt.subplots(figsize=(30,20))
-            dist_by_year_month = actDF_subset.groupby(by=['year', 'month_num']).sum().reset_index()
-            sns.set_style("whitegrid")
-            if not metric :
-                max_dist_in_month = dist_by_year_month['distance(miles)'].max()
-                sns.barplot(data=dist_by_year_month, x='month_num', y='distance(miles)', hue='year', ax=ax, palette='deep')
-                ax.set_ylabel("Distance in Miles", fontsize=25)
-                ax.set_title("Miles per Month per Year ("+activity_type+")", fontsize=30)
-            else :
-                max_dist_in_month = dist_by_year_month['distance(km)'].max()
-                sns.barplot(data=dist_by_year_month, x='month_num', y='distance(km)', hue='year', ax=ax, palette='deep')
-                ax.set_ylabel("Distance in KM", fontsize=25)
-                ax.set_title("Kilometers per Month per Year ("+activity_type+")", fontsize=30)
-            ax.set_xticks(ticks=month_df.index, labels=month_df['month'], fontsize=25)
-            tick_step = 50
-            y_lim_max = max_dist_in_month+tick_step // 2
-            yticks=np.arange(0,y_lim_max, tick_step)
-            ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
-            ax.set_xlabel("Month", fontsize=25)
-            ax.set_ylim((0,y_lim_max))
-            for container in ax.containers :
-                ax.bar_label(container, fmt='{:,.0f}', fontsize=16)
-            ax.legend(fontsize=20)
-            plt.tight_layout()
-            plt.grid()
-            fig.savefig(activity_type+"_distance_bar_by_year_month.png")
-            plt.close()
-            
-            # Barplot comparing distance per season per year
+            df_by_year_month = actDF_subset.groupby(by=['year', 'month_num']).sum().reset_index()
             seasons = actDF_subset.groupby(['season_num', 'season']).count()
             seasons_df = pd.DataFrame(seasons.index.to_list(), columns=seasons.index.names)
-            fig, ax = plt.subplots(figsize=(30,20))
-            dist_by_year_season = actDF_subset.groupby(by=['year', 'season_num']).sum().reset_index()
-            sns.set_style("whitegrid")
-            if not metric :
-                max_dist_in_season = dist_by_year_season['distance(miles)'].max()
-                sns.barplot(data=dist_by_year_season, x='season_num', y='distance(miles)', hue='year', ax=ax, palette='deep')
-                ax.set_ylabel("Distance in Miles", fontsize=25)
-                ax.set_title("Miles per Season per Year ("+activity_type+")", fontsize=30)
-            else :
-                max_dist_in_season = dist_by_year_season['distance(km)'].max()
-                sns.barplot(data=dist_by_year_season, x='season_num', y='distance(km)', hue='year', ax=ax, palette='deep')
-                ax.set_ylabel("Distance in KM", fontsize=25)
-                ax.set_title("Kilometers per Season per Year ("+activity_type+")", fontsize=30)
-            ax.set_xticks(ticks=seasons_df.index, labels=seasons_df['season'], fontsize=25)
-            tick_step = 50
-            y_lim_max = max_dist_in_season + tick_step // 2
-            yticks=np.arange(0,y_lim_max, tick_step)
-            ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
-            ax.set_xlabel("Season", fontsize=25)
-            ax.set_ylim((0,y_lim_max))
-            for container in ax.containers :
-                ax.bar_label(container, fmt='{:,.0f}', fontsize=16)
-            ax.legend(fontsize=20)
-            plt.tight_layout()
-            plt.grid()
-            fig.savefig(activity_type+"_distance_bar_by_year_season.png")
-            plt.close()
+            df_by_year_season = actDF_subset.groupby(by=['year', 'season_num']).sum().reset_index()
+            imwidth = 30
+            imheight = 20
+            
+            def my_round(a, base) :
+                while a < base :
+                    base = base // 2
+                x = (a // base) * base
+                y = float(a % base)
+                y = int(round(y/base) * base)
+                return x+y
+            
+            def get_formatting_values(max_val) :
+                if 10000 <= max_val < 1000000 :
+                    y_tick_divisor = 1000
+                    order_mag = 'K'
+                else :
+                    y_tick_divisor = 1
+                    order_mag = ''
+                num_y_ticks = 20
+                y_tick_step = max_val / num_y_ticks
+                # Now round this to the nearest multiple of 50*y_tick_divisor.
+                y_tick_step = my_round(y_tick_step, 50) if y_tick_divisor == 1 else my_round(y_tick_step, 5*y_tick_divisor)
+                return (y_tick_step, y_tick_divisor, order_mag)
+            
+            for feature in features :
+                # For ease of reading so that we don't have to remember what each
+                # member of the feature tuples mean:
+                formatting_values = feature[2]
+
+                # Compare total feature value per year
+                fig, ax = plt.subplots(figsize=(imwidth,imheight))
+                max_in_year = df_by_year[feature[0]].max()
+                sns.barplot(data=df_by_year, x='year', y=feature[0], ax=ax)
+                ax.set_ylabel(feature[1], fontsize=25)
+                ax.set_title(feature[1] + " ("+activity_type+")", fontsize=30)
+                tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_year)
+                y_lim_max = max_in_year + tick_step // 2
+                ax.set_ylim((0,y_lim_max))
+                yticks = np.arange(0,y_lim_max, tick_step)
+                #y_tick_divisor = formatting_values[3]
+                #unit = formatting_values[4]
+                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor)}{order_mag}' for y in yticks], fontsize=16)
+                ax.set_xlabel("Year", fontsize=25)
+                ax.set_xticks(ticks=df_by_year.index, labels=df_by_year['year'], fontsize=25)
+                labels = [f'{round(val/y_tick_divisor)}{order_mag}' for val in df_by_year[feature[0]]]
+                #ax.bar_label(ax.containers[0], fmt='{:,.0f}', fontsize=16)
+                ax.bar_label(ax.containers[0], labels=labels, fontsize=16)
+                plt.tight_layout()
+                fig.savefig(activity_type+"_"+feature[0] + "_bar_by_year.png")
+                plt.close()
+
+                # Compare total feature value per month per year
+                fig, ax = plt.subplots(figsize=(30,20))
+                sns.set_style("whitegrid")
+                max_in_month = df_by_year_month[feature[0]].max()
+                sns.barplot(data=df_by_year_month, x='month_num', y=feature[0], hue='year', ax=ax, palette='deep')
+                ax.set_ylabel(feature[1], fontsize=25)
+                ax.set_title(feature[1] + " per Month per Year ("+activity_type+")", fontsize=30)
+                ax.set_xticks(ticks=month_df.index, labels=month_df['month'], fontsize=25)
+                #tick_step = formatting_values[1]
+                tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_month)
+                y_lim_max = max_in_month+tick_step // 2
+                yticks=np.arange(0,y_lim_max, tick_step)
+                #ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
+                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor)}{order_mag}' for y in yticks], fontsize=16)
+                ax.set_xlabel("Month", fontsize=25)
+                ax.set_ylim((0,y_lim_max))
+                for container in ax.containers :
+                    #ax.bar_label(container, fmt='{:,.0f}', fontsize=16)
+                    ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:.0f}{order_mag}', fontsize=16)
+                ax.legend(fontsize=20)
+                plt.tight_layout()
+                plt.grid()
+                fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_month.png")
+                plt.close()
+            
+                # Barplots comparing feature values per season per year
+                fig, ax = plt.subplots(figsize=(30,20))
+                sns.set_style("whitegrid")
+                max_in_season = df_by_year_season[feature[0]].max()
+                sns.barplot(data=df_by_year_season, x='season_num', y=feature[0], hue='year', ax=ax, palette='deep')
+                ax.set_ylabel(feature[1], fontsize=25)
+                ax.set_title(feature[1] + " per Season per Year ("+activity_type+")", fontsize=30)
+                ax.set_xticks(ticks=seasons_df.index, labels=seasons_df['season'], fontsize=25)
+                #tick_step = tick_step = formatting_values[2]
+                #tick_step = get_formatting_values(max_in_season)
+                tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_season)
+                y_lim_max = max_in_season + tick_step // 2
+                yticks=np.arange(0,y_lim_max, tick_step)
+                #ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
+                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor)}{order_mag}' for y in yticks], fontsize=16)
+                ax.set_xlabel("Season", fontsize=25)
+                ax.set_ylim((0,y_lim_max))
+                for container in ax.containers :
+                    ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:.0f}{order_mag}', fontsize=16)
+                ax.legend(fontsize=20)
+                plt.tight_layout()
+                plt.grid()
+                fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_season.png")
+                plt.close()
             
     def make_combined_figures(self) :
         csv_file = "strava-activities.csv"
