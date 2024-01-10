@@ -843,8 +843,14 @@ class StravaAnalyzer :
                 print("No activities with elevation gain similar to ", elev_gain, "and distance similar to", distance)
             return list_of_urls
         
+    
+    def make_activity_figures(self, activity_list=['Ride'], metric=False, year_list=None) :
+        if not isinstance(activity_list, list) :
+            activity_list = [activity_list]
+        for act in activity_list :
+            self.make_single_act_figures(activity_type=act, metric=metric, year_list=year_list)
         
-    def make_activity_figures(self, activity_type="Ride", metric=False, year_list=None) :
+    def make_single_act_figures(self, activity_type="Ride", metric=False, year_list=None) :
         csv_file = activity_type + ".csv"
         try :
             actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
@@ -1002,16 +1008,6 @@ class StravaAnalyzer :
                 fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_season.png")
                 plt.close()
              
-            # Boxplots for the fun of it.   
-            for feature in features :
-                fig, axes = plt.subplots(nrows=2, ncols=1)
-                sns.boxplot(data=actDF, x=feature[0], y='month', ax=axes[0])
-                axes[0].set_xlabel(activity_type + feature[1])
-                axes[0].set_title("Box Plot of " + activity_type + " " + feature[1])
-                sns.histplot(data=actDF, x=feature[0], hue='month', multiple='dodge', ax=axes[1])
-                fig.savefig((activity_type+"_" +feature[0] + ".png"))
-                plt.close()
-            
     def make_combined_figures(self) :
         csv_file = "strava-activities.csv"
         try :
