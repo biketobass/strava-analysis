@@ -458,7 +458,7 @@ class StravaAnalyzer :
                     all_actsDF[col] = np.nan
 
             # Get the list of unique activity types (Ride, Hike, Kayak, etc.)
-            act_types = all_actsDF["type"].unique()
+            act_types = all_actsDF["sport_type"].unique()
             # Get the list of unique years in the data.
             # Extract each year out of the data and sort them.
             years = pd.Series(d.year for d in all_actsDF["start_date"]).unique()
@@ -472,7 +472,7 @@ class StravaAnalyzer :
             # Loop through all of the activity types and add info into the summary file.
             # Also create a csv for each activity that has the Strava info for that activity only.
             for act in act_types:
-                actDF = all_actsDF[all_actsDF["type"] == act]
+                actDF = all_actsDF[all_actsDF["sport_type"] == act]
                 actDF.to_csv(act + ".csv")
                 # Add the summary stats
                 summaryDF.loc[act, "Total Distance (miles)"] = actDF["distance"].sum() * 0.000621371
@@ -854,41 +854,51 @@ class StravaAnalyzer :
         else :
             # The file exists.
             # Let's make some figures
-            # Box plots
-            # In the feature tuples below the last tuple of each is:
-            # 0: y-axis tick step
-            # 1:
-            # 2: 
-            # 3: y_tick_divisor - Use for example if you want 1000s
-            # 4: unit - for example K
+
+            # Each feature tuple below gives a column name from actDF paired with a more readable description.
             if not metric :
-                features = [('distance(miles)', 'Distance in Miles', (250, 50, 100, 1, "")), ('elevation_gain(ft)', 'Total Elevation Gain in Feet', (10000, 2000, 5000, 1000, 'K'))]
+                features = [('distance(miles)', 'Distance in Miles'), ('elevation_gain(ft)', 'Total Elevation Gain in Feet')]
             else :
-                features = [('distance(km)', 'Distance in Km', (250, 50, 100, 1, '')), ('total_elevation_gain', 'Total Elevation Gain in Meters', (5000, 2000, 5000, 1000, 'K'))]
-            for feature in features :
-                fig, axes = plt.subplots(nrows=2, ncols=1)
-                sns.boxplot(data=actDF, x=feature[0], y='month', ax=axes[0])
-                axes[0].set_xlabel(activity_type + feature[1])
-                axes[0].set_title("Box Plot of " + activity_type + " " + feature[1])
-                sns.histplot(data=actDF, x=feature[0], hue='month', multiple='dodge', ax=axes[1])
-                fig.savefig((activity_type+"_" +feature[0] + ".png"))
-                plt.close()
-            # Barplots
+                features = [('distance(km)', 'Distance in Km'), ('total_elevation_gain', 'Total Elevation Gain in Meters')]
+            
+            # Make some barplots
             actDF_subset = actDF[['year', 'month', 'month_num', 'distance(miles)', 'distance(km)', 'total_elevation_gain', 'elevation_gain(ft)', 'season', 'season_num']]
             if year_list :
                 actDF_subset = actDF_subset[actDF_subset['year'].isin(year_list)]
                 
-            # Make barplots for the features.
+            # The figures are going to show data by year, season and month.
+            # Create a df for each.
             df_by_year = actDF_subset.groupby(by='year').sum().reset_index()
-            months = actDF_subset.groupby(['month_num', 'month']).count()
-            month_df = pd.DataFrame(months.index.to_list(), columns=months.index.names)
-            df_by_year_month = actDF_subset.groupby(by=['year', 'month_num']).sum().reset_index()
-            seasons = actDF_subset.groupby(['season_num', 'season']).count()
-            seasons_df = pd.DataFrame(seasons.index.to_list(), columns=seasons.index.names)
-            df_by_year_season = actDF_subset.groupby(by=['year', 'season_num']).sum().reset_index()
-            imwidth = 30
-            imheight = 20
             
+            all_month_nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+            month_df = pd.DataFrame({'month':['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], 
+                                     'month_num': all_month_nums})
+            df_by_year_month = actDF_subset.groupby(by=['year', 'month_num']).sum().reset_index()
+            # Make sure that df_by_year_month has a value for every month_num. If not, add a row with 0s in the columns
+            # for the missing months.
+            month_check = df_by_year_month['month_num'].unique()
+            for m in all_month_nums :
+                if m not in month_check :
+                    # Add a dummy row to df_by_year_month
+                    dum_year = df_by_year_month.loc[len(df_by_year_month)-1, 'year']
+                    df_by_year_month.loc[len(df_by_year_month)] = 0
+                    df_by_year_month.loc[len(df_by_year_month)-1, 'year'] = dum_year
+                    df_by_year_month.loc[len(df_by_year_month)-1, 'month_num'] = m
+            #seasons_df = actDF_subset.groupby(['season_num', 'season']).count().reset_index()
+            all_season_nums = [1,2,3,4]
+            seasons_df = pd.DataFrame({'season':['winter', 'spring', 'summer', 'fall'], 'season_num':all_season_nums})
+            df_by_year_season = actDF_subset.groupby(by=['year', 'season_num']).sum().reset_index()
+            season_check = df_by_year_season['season_num'].unique()
+            for s in all_season_nums :
+                if s not in season_check :
+                    dum_year = df_by_year_season.loc[len(df_by_year_season)-1, 'year']
+                    df_by_year_season.loc[len(df_by_year_season)] = 0
+                    df_by_year_season.loc[len(df_by_year_season)-1, 'year'] = dum_year
+                    df_by_year_season.loc[len(df_by_year_season)-1, 'season_num'] = s
+    
+            # Helper function for rounding values to the nearest multiple of a base number.
+            # For example, if a == 80 and base == 25, it returns 75.
+            # We can run into trouble if a < base, hence the while loop.
             def my_round(a, base) :
                 while a < base :
                     base = base // 2
@@ -897,6 +907,10 @@ class StravaAnalyzer :
                 y = int(round(y/base) * base)
                 return x+y
             
+            # Helper function for calculating various formatting values:
+            # distance between ticks on the y-axis, and the order of magnitude
+            # at which we'll be displaying numbers.
+            # It takes a max y-axis value and scales accordingly.
             def get_formatting_values(max_val) :
                 if 10000 <= max_val < 1000000 :
                     y_tick_divisor = 1000
@@ -906,40 +920,45 @@ class StravaAnalyzer :
                     order_mag = ''
                 num_y_ticks = 20
                 y_tick_step = max_val / num_y_ticks
-                # Now round this to the nearest multiple of 50*y_tick_divisor.
+                # Now round this to the nearest multiple of 5*y_tick_divisor
+                # unless y_tick_divisor is one, in which case use 50.
                 y_tick_step = my_round(y_tick_step, 50) if y_tick_divisor == 1 else my_round(y_tick_step, 5*y_tick_divisor)
                 return (y_tick_step, y_tick_divisor, order_mag)
             
+            # Each figure is going to have the same width and height.
+            imwidth = 30
+            imheight = 20
+            # Loop through the features (distance, elevation gain, etc.)
             for feature in features :
-                # For ease of reading so that we don't have to remember what each
-                # member of the feature tuples mean:
-                formatting_values = feature[2]
-
-                # Compare total feature value per year
+                # Set the style for all of the figures
+                sns.set_style("whitegrid")
+                
+                # Create barplots for each feature for year, month, season.
+                max_in_year = df_by_year[feature[0]].max() # Will use later to set the max value of the y-axis.
+                # Create the figure
                 fig, ax = plt.subplots(figsize=(imwidth,imheight))
-                max_in_year = df_by_year[feature[0]].max()
                 sns.barplot(data=df_by_year, x='year', y=feature[0], ax=ax)
                 ax.set_ylabel(feature[1], fontsize=25)
                 ax.set_title(feature[1] + " ("+activity_type+")", fontsize=30)
+                # Use the helper function above to get the figure formatting values.
                 tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_year)
+                # Set up the y axis.
                 y_lim_max = max_in_year + tick_step // 2
                 ax.set_ylim((0,y_lim_max))
                 yticks = np.arange(0,y_lim_max, tick_step)
-                #y_tick_divisor = formatting_values[3]
-                #unit = formatting_values[4]
-                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor)}{order_mag}' for y in yticks], fontsize=16)
+                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor):,}{order_mag}' for y in yticks], fontsize=16)
+                # Set up the x-axis.
                 ax.set_xlabel("Year", fontsize=25)
                 ax.set_xticks(ticks=df_by_year.index, labels=df_by_year['year'], fontsize=25)
-                labels = [f'{round(val/y_tick_divisor)}{order_mag}' for val in df_by_year[feature[0]]]
-                #ax.bar_label(ax.containers[0], fmt='{:,.0f}', fontsize=16)
-                ax.bar_label(ax.containers[0], labels=labels, fontsize=16)
+                for container in ax.containers :
+                    ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:,.0f}{order_mag}', fontsize=16)
                 plt.tight_layout()
                 fig.savefig(activity_type+"_"+feature[0] + "_bar_by_year.png")
                 plt.close()
 
                 # Compare total feature value per month per year
+                # number of miles per month each year for example.
                 fig, ax = plt.subplots(figsize=(30,20))
-                sns.set_style("whitegrid")
                 max_in_month = df_by_year_month[feature[0]].max()
                 sns.barplot(data=df_by_year_month, x='month_num', y=feature[0], hue='year', ax=ax, palette='deep')
                 ax.set_ylabel(feature[1], fontsize=25)
@@ -950,12 +969,11 @@ class StravaAnalyzer :
                 y_lim_max = max_in_month+tick_step // 2
                 yticks=np.arange(0,y_lim_max, tick_step)
                 #ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
-                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor)}{order_mag}' for y in yticks], fontsize=16)
+                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor):,.0f}{order_mag}' for y in yticks], fontsize=16)
                 ax.set_xlabel("Month", fontsize=25)
                 ax.set_ylim((0,y_lim_max))
                 for container in ax.containers :
-                    #ax.bar_label(container, fmt='{:,.0f}', fontsize=16)
-                    ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:.0f}{order_mag}', fontsize=16)
+                    ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:,.0f}{order_mag}' if x>0 else '', fontsize=16)
                 ax.legend(fontsize=20)
                 plt.tight_layout()
                 plt.grid()
@@ -970,21 +988,28 @@ class StravaAnalyzer :
                 ax.set_ylabel(feature[1], fontsize=25)
                 ax.set_title(feature[1] + " per Season per Year ("+activity_type+")", fontsize=30)
                 ax.set_xticks(ticks=seasons_df.index, labels=seasons_df['season'], fontsize=25)
-                #tick_step = tick_step = formatting_values[2]
-                #tick_step = get_formatting_values(max_in_season)
                 tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_season)
                 y_lim_max = max_in_season + tick_step // 2
                 yticks=np.arange(0,y_lim_max, tick_step)
-                #ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
-                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor)}{order_mag}' for y in yticks], fontsize=16)
+                ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor):,.0f}{order_mag}' for y in yticks], fontsize=16)
                 ax.set_xlabel("Season", fontsize=25)
                 ax.set_ylim((0,y_lim_max))
                 for container in ax.containers :
-                    ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:.0f}{order_mag}', fontsize=16)
+                    ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:,.0f}{order_mag}' if x>0 else '', fontsize=16)
                 ax.legend(fontsize=20)
                 plt.tight_layout()
                 plt.grid()
                 fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_season.png")
+                plt.close()
+             
+            # Boxplots for the fun of it.   
+            for feature in features :
+                fig, axes = plt.subplots(nrows=2, ncols=1)
+                sns.boxplot(data=actDF, x=feature[0], y='month', ax=axes[0])
+                axes[0].set_xlabel(activity_type + feature[1])
+                axes[0].set_title("Box Plot of " + activity_type + " " + feature[1])
+                sns.histplot(data=actDF, x=feature[0], hue='month', multiple='dodge', ax=axes[1])
+                fig.savefig((activity_type+"_" +feature[0] + ".png"))
                 plt.close()
             
     def make_combined_figures(self) :
@@ -999,8 +1024,8 @@ class StravaAnalyzer :
             # Let's make some figures
             
             # Pie chart
-            actDF_subset = actDF[['type', 'moving_time', 'elapsed_time', 'distance', 'total_elevation_gain']]
-            pie_df = actDF_subset.groupby('type').sum().reset_index().sort_values(by='moving_time', ascending=False).reset_index()
+            actDF_subset = actDF[['sport_type', 'moving_time', 'elapsed_time', 'distance', 'total_elevation_gain']]
+            pie_df = actDF_subset.groupby('sport_type').sum().reset_index().sort_values(by='moving_time', ascending=False).reset_index()
             #pie_df = actDF_subset.groupby('type').sum().reset_index()
             total_moving_time = actDF['moving_time'].sum()
             pie_df['moving_time_fraction'] = pie_df['moving_time']/total_moving_time
@@ -1010,7 +1035,7 @@ class StravaAnalyzer :
             wedges = []
             labels = []
             # This works because pie_df is sorted.
-            for fraction, label in zip(pie_df['moving_time_fraction'], pie_df['type']) :
+            for fraction, label in zip(pie_df['moving_time_fraction'], pie_df['sport_type']) :
                 if fraction >= 0.01 :
                     wedges.append(fraction)
                     labels.append(label)
@@ -1031,4 +1056,15 @@ class StravaAnalyzer :
             plt.tight_layout()
             fig.savefig('all_acts_pie.png')
             plt.close()
+            
+    def get_activity_list(self) :
+        csv_file = "strava-activities.csv"
+        try :
+            actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
+        except FileNotFoundError:
+            print(csv_file, "file does not exist. Record some of that activity and try again.")
+            return None
+        else :
+            # The file exists.
+            return actDF['sport_type'].unique()
                 
