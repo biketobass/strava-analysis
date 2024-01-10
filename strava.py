@@ -1061,10 +1061,10 @@ class StravaAnalyzer :
             plt.setp(texts, size=20, weight='bold')
             if year :
                 plt.suptitle("Moving Time Breakdown by Activity Type in " + str(year), fontsize=30, weight='bold')
-                ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours', fontsize=25, weight='bold')
+                ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours\n', fontsize=25, weight='bold')
             else :
                 plt.suptitle("Moving Time Breakdown by Activity Type", fontsize=30, weight='bold')
-                ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours', fontsize=25, weight='bold')
+                ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours\n', fontsize=25, weight='bold')
                 #ax.set_title("Percent of Moving Time by Activity Type", fontsize=30, weight='bold')
             plt.tight_layout()
             if year :
