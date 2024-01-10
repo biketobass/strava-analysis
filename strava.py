@@ -1008,7 +1008,7 @@ class StravaAnalyzer :
                 fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_season.png")
                 plt.close()
              
-    def make_combined_figures(self) :
+    def make_combined_figures(self, year=None, other_threshold=0.01) :
         csv_file = "strava-activities.csv"
         try :
             actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
@@ -1021,9 +1021,11 @@ class StravaAnalyzer :
             
             # Pie chart
             actDF_subset = actDF[['sport_type', 'moving_time', 'elapsed_time', 'distance', 'total_elevation_gain']]
+            if year :
+                actDF_subset = actDF_subset[actDF['year'] == year]
             pie_df = actDF_subset.groupby('sport_type').sum().reset_index().sort_values(by='moving_time', ascending=False).reset_index()
             #pie_df = actDF_subset.groupby('type').sum().reset_index()
-            total_moving_time = actDF['moving_time'].sum()
+            total_moving_time = actDF_subset['moving_time'].sum()
             pie_df['moving_time_fraction'] = pie_df['moving_time']/total_moving_time
 #            print(pie_df['moving_time_fraction'])
             # Group activities that make up less than one percent of the moving time
@@ -1031,26 +1033,44 @@ class StravaAnalyzer :
             wedges = []
             labels = []
             # This works because pie_df is sorted.
+            first_crossing = True
             for fraction, label in zip(pie_df['moving_time_fraction'], pie_df['sport_type']) :
-                if fraction >= 0.01 :
+                if fraction >= other_threshold :
                     wedges.append(fraction)
                     labels.append(label)
                 else :
-                    wedges[-1] += fraction
-                    labels[-1] = 'Other'
+                    if first_crossing :
+                        wedges.append(fraction)
+                        labels.append('Other')
+                        first_crossing = False
+                    else :
+                        wedges[-1] += fraction
+                        labels[-1] = 'Other'
             fig, ax = plt.subplots(figsize=(20,20))
             #max_index = pie_df['moving_time_fraction'].idxmax()
             #explode = [0 for i in range(0, len(pie_df['moving_time_fraction']))]
             explode = [0 for i in range(0, len(wedges))]
             explode[0] = 0.1
-            #angle = -180 * pie_df['moving_time_fraction'].iloc[3]
-            #angle = 180 * wedges[0]
-            angle = 0
-            #ax.pie(pie_df['moving_time_fraction'], labels=pie_df['type'], autopct='%1.1f%%', textprops={'size': 'xx-large'}, shadow=True, explode=explode)
-            ax.pie(wedges, labels=labels, autopct='%1.1f%%', textprops={'size': 'xx-large'}, shadow=True, explode=explode, startangle=angle)
-            ax.set_title("Percent of Moving Time by Activity Type", fontsize=30)
+            #ax.pie(wedges, labels=labels, autopct='%1.1f%%', textprops={'size': 'xx-large'}, shadow=True, explode=explode)
+            def label_func(pct) :
+                hours = int(np.round((total_moving_time * pct/100.0)/3600.0))
+                return f"{pct:.1f}%\n({hours:,} hours)" if pct >= 2 else f"{pct:.1f}% - ({hours:,} hours)"
+            #ax.pie(wedges, labels=labels, autopct=lambda pct: label_func(pct), textprops={'size': 'xx-large'}, shadow=True, explode=explode)
+            wdgs, texts, autotexts = ax.pie(wedges, labels=labels, autopct=lambda pct: label_func(pct), textprops={'size': 'xx-large'}, shadow=True, explode=explode)
+            plt.setp(autotexts, size=20, weight='bold')
+            plt.setp(texts, size=20, weight='bold')
+            if year :
+                plt.suptitle("Moving Time Breakdown by Activity Type in " + str(year), fontsize=30, weight='bold')
+                ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours', fontsize=25, weight='bold')
+            else :
+                plt.suptitle("Moving Time Breakdown by Activity Type", fontsize=30, weight='bold')
+                ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours', fontsize=25, weight='bold')
+                #ax.set_title("Percent of Moving Time by Activity Type", fontsize=30, weight='bold')
             plt.tight_layout()
-            fig.savefig('all_acts_pie.png')
+            if year :
+                fig.savefig('all_acts_pie_'+str(year)+'.png')
+            else :
+                fig.savefig('all_acts_pie.png')
             plt.close()
             
     def get_activity_list(self) :
