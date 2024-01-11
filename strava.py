@@ -1020,9 +1020,16 @@ class StravaAnalyzer :
             # Let's make some figures
             
             # Pie chart
-            actDF_subset = actDF[['sport_type', 'moving_time', 'elapsed_time', 'distance', 'total_elevation_gain']]
+            actDF_subset = actDF[['sport_type', 'moving_time', 'elapsed_time', 'distance', 'total_elevation_gain', 'year']]
             if year :
-                actDF_subset = actDF_subset[actDF['year'] == year]
+                actDF_subset = actDF_subset[actDF_subset['year'] == year]
+            else :
+                # Note that years will be sorted in reverse chronological order because
+                # unique() returns values in order to appearance and Strava results are
+                # returned newest to oldest.
+                years = actDF_subset['year'].unique()
+                start_year = years[-1]
+                end_year = years[0]
             pie_df = actDF_subset.groupby('sport_type').sum().reset_index().sort_values(by='moving_time', ascending=False).reset_index()
             #pie_df = actDF_subset.groupby('type').sum().reset_index()
             total_moving_time = actDF_subset['moving_time'].sum()
@@ -1063,7 +1070,7 @@ class StravaAnalyzer :
                 plt.suptitle("Moving Time Breakdown by Activity Type in " + str(year), fontsize=30, weight='bold')
                 ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours\n', fontsize=25, weight='bold')
             else :
-                plt.suptitle("Moving Time Breakdown by Activity Type", fontsize=30, weight='bold')
+                plt.suptitle(f"Moving Time Breakdown by Activity Type from {start_year} to {end_year} ", fontsize=30, weight='bold')
                 ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours\n', fontsize=25, weight='bold')
                 #ax.set_title("Percent of Moving Time by Activity Type", fontsize=30, weight='bold')
             plt.tight_layout()
