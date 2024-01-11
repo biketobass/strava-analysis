@@ -1067,7 +1067,7 @@ class StravaAnalyzer :
                 fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_season.png")
                 plt.close()
              
-    def make_combined_figures(self, year=None, other_threshold=0.01) :
+    def make_combined_pie_chart(self, year=None, other_threshold=0.01) :
         """
         Produce pie chart illustrating percent of moving time of each Strava activity type.
 
