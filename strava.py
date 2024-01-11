@@ -845,12 +845,62 @@ class StravaAnalyzer :
         
     
     def make_activity_figures(self, activity_list=['Ride'], metric=False, year_list=None) :
+        """
+        Produce bar charts comparing activity performance across years, months, and seasons.
+
+        Given a set of Strava sport types, for each type, produce mileage and elevation gain
+        comparison bar charts. If metric is False (the default) it assumes miles for distance
+        feet for elevation gain. If metric is True, it assumes kilometers and meters.
+        
+        If a list of years is provided, it limits the charts to those years only.
+
+        Parameters
+        ----------
+        activity_list : list or String, optional
+            The Strava sport types you are interested in. If it's String, the method will
+            create a single element list with it in it. Default = ['Ride']
+        metric: bool, optional
+            If False (default), assumes miles for distance and feet for elevation gain. If
+            True, assumes kilometers and meters.
+        year_list : list, optional
+            List of years to consider when making the charts. If None (default), it uses all years in
+            your Strava data.
+        """
+
+        # Check if activity_list is a list. If not, turn it into a list.        
         if not isinstance(activity_list, list) :
             activity_list = [activity_list]
+            
+        # For each activity in the list call make_single_act_figures.
         for act in activity_list :
             self.make_single_act_figures(activity_type=act, metric=metric, year_list=year_list)
         
     def make_single_act_figures(self, activity_type="Ride", metric=False, year_list=None) :
+        """
+        Produce bar charts comparing activity performance across years, months, and seasons.
+
+        Given a Strava sport type, produce mileage and elevation gain
+        comparison bar charts. If metric is False (the default) it assumes miles for distance
+        feet for elevation gain. If metric is True, it assumes kilometers and meters.
+        
+        If a list of years is provided, it limits the charts to those years only.
+        
+        Saves charts with file names starting with the activity_type and ending .png.
+        Ride_distance(miles)_bar_by_year.png, for example.
+
+        Parameters
+        ----------
+        activity_type : String, optional
+            The Strava sport type you are interested in. If it's String, the method will
+            create a single element list with it in it. Default = Ride.
+        metric: bool, optional
+            If False (default), assumes miles for distance and feet for elevation gain. If
+            True, assumes kilometers and meters.
+        year_list : list, optional
+            List of years to consider when making the charts. If None (default), it uses all years in
+            your Strava data.
+        """
+        # Read the csv_file.
         csv_file = activity_type + ".csv"
         try :
             actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
@@ -868,32 +918,41 @@ class StravaAnalyzer :
                 features = [('distance(km)', 'Distance in Km'), ('total_elevation_gain', 'Total Elevation Gain in Meters')]
             
             # Make some barplots
+            # Get just the info we're interested in.
             actDF_subset = actDF[['year', 'month', 'month_num', 'distance(miles)', 'distance(km)', 'total_elevation_gain', 'elevation_gain(ft)', 'season', 'season_num']]
+            # If we're only looking at a subset of years, get just the data from those years.
             if year_list :
                 actDF_subset = actDF_subset[actDF_subset['year'].isin(year_list)]
                 
             # The figures are going to show data by year, season and month.
-            # Create a df for each.
+            # Create dfs for years, months, and seasons.
             df_by_year = actDF_subset.groupby(by='year').sum().reset_index()
             
+            # A list of month numbers and a dataframe of months will come in handy later.
             all_month_nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
             month_df = pd.DataFrame({'month':['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], 
                                      'month_num': all_month_nums})
             df_by_year_month = actDF_subset.groupby(by=['year', 'month_num']).sum().reset_index()
-            # Make sure that df_by_year_month has a value for every month_num. If not, add a row with 0s in the columns
-            # for the missing months.
+            # Make sure that df_by_year_month has a value for every month_num. If not, add a row with 0s all columns
+            # except for the month_num and year. If you don't do this, the charts won't display 12 months.
             month_check = df_by_year_month['month_num'].unique()
             for m in all_month_nums :
                 if m not in month_check :
                     # Add a dummy row to df_by_year_month
+                    # The dummy year is going to be the same as the year in the current
+                    # last row. The year doesn't really matter. This is just easy.
                     dum_year = df_by_year_month.loc[len(df_by_year_month)-1, 'year']
+                    # Set everything in the new row to 0.
                     df_by_year_month.loc[len(df_by_year_month)] = 0
+                    # Set the year and month.
                     df_by_year_month.loc[len(df_by_year_month)-1, 'year'] = dum_year
                     df_by_year_month.loc[len(df_by_year_month)-1, 'month_num'] = m
-            #seasons_df = actDF_subset.groupby(['season_num', 'season']).count().reset_index()
+            
+            # As with months, it's useful later to have a list of season_nums and a dataframe of seasons.
             all_season_nums = [1,2,3,4]
             seasons_df = pd.DataFrame({'season':['winter', 'spring', 'summer', 'fall'], 'season_num':all_season_nums})
             df_by_year_season = actDF_subset.groupby(by=['year', 'season_num']).sum().reset_index()
+            # As with months, fill in any missing seasons.
             season_check = df_by_year_season['season_num'].unique()
             for s in all_season_nums :
                 if s not in season_check :
@@ -905,6 +964,7 @@ class StravaAnalyzer :
             # Helper function for rounding values to the nearest multiple of a base number.
             # For example, if a == 80 and base == 25, it returns 75.
             # We can run into trouble if a < base, hence the while loop.
+            # This function and the next will be helpful for formatting the chart axes.
             def my_round(a, base) :
                 while a < base :
                     base = base // 2
@@ -941,14 +1001,16 @@ class StravaAnalyzer :
                 
                 # Create barplots for each feature for year, month, season.
                 max_in_year = df_by_year[feature[0]].max() # Will use later to set the max value of the y-axis.
-                # Create the figure
+                # Start with comparisons across years.
                 fig, ax = plt.subplots(figsize=(imwidth,imheight))
+                # Use the feature tuples. feature[0] is the column; feature[1]
+                # is the readable version.
                 sns.barplot(data=df_by_year, x='year', y=feature[0], ax=ax)
                 ax.set_ylabel(feature[1], fontsize=25)
                 ax.set_title(feature[1] + " ("+activity_type+")", fontsize=30)
                 # Use the helper function above to get the figure formatting values.
                 tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_year)
-                # Set up the y axis.
+                # Set up the y axis, giving a little extra room at the top edge.
                 y_lim_max = max_in_year + tick_step // 2
                 ax.set_ylim((0,y_lim_max))
                 yticks = np.arange(0,y_lim_max, tick_step)
@@ -962,7 +1024,7 @@ class StravaAnalyzer :
                 fig.savefig(activity_type+"_"+feature[0] + "_bar_by_year.png")
                 plt.close()
 
-                # Compare total feature value per month per year
+                # Compare total feature value per month per year - 
                 # number of miles per month each year for example.
                 fig, ax = plt.subplots(figsize=(30,20))
                 max_in_month = df_by_year_month[feature[0]].max()
@@ -970,11 +1032,9 @@ class StravaAnalyzer :
                 ax.set_ylabel(feature[1], fontsize=25)
                 ax.set_title(feature[1] + " per Month per Year ("+activity_type+")", fontsize=30)
                 ax.set_xticks(ticks=month_df.index, labels=month_df['month'], fontsize=25)
-                #tick_step = formatting_values[1]
                 tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_month)
                 y_lim_max = max_in_month+tick_step // 2
                 yticks=np.arange(0,y_lim_max, tick_step)
-                #ax.set_yticks(ticks=yticks, labels=[round(y) for y in yticks], fontsize=16)
                 ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor):,.0f}{order_mag}' for y in yticks], fontsize=16)
                 ax.set_xlabel("Month", fontsize=25)
                 ax.set_ylim((0,y_lim_max))
@@ -988,7 +1048,6 @@ class StravaAnalyzer :
             
                 # Barplots comparing feature values per season per year
                 fig, ax = plt.subplots(figsize=(30,20))
-                sns.set_style("whitegrid")
                 max_in_season = df_by_year_season[feature[0]].max()
                 sns.barplot(data=df_by_year_season, x='season_num', y=feature[0], hue='year', ax=ax, palette='deep')
                 ax.set_ylabel(feature[1], fontsize=25)
@@ -1009,43 +1068,75 @@ class StravaAnalyzer :
                 plt.close()
              
     def make_combined_figures(self, year=None, other_threshold=0.01) :
+        """
+        Produce pie chart illustrating percent of moving time of each Strava activity type.
+
+        If no year is given, the pie chart includes all recorded activities. If a year is given,
+        it only includes activities from that year. The parameter other_threshold is used to
+        lump together activites that had accounted for very small percentages of the total move time.
+        This is used to keep the pie chart from looking messy.
+        
+        Saves chart with file name all_acts_pie.png or with the year added such as
+        all_acts_pie_2023.png, for example.
+
+        Parameters
+        ----------
+        year : int, optional
+            If given, the year of the data we're interested in.
+        other_threshold: float, option
+            used to lump together activites that had accounted for very small percentages of the total move time.
+            0.01 is the default.
+        """
+        # Get the stored stava data.
         csv_file = "strava-activities.csv"
         try :
             actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
         except FileNotFoundError:
-            print(csv_file, "file does not exist. Record some of that activity and try again.")
+            print(csv_file, "file does not exist. Record some activities and try again.")
             return None
         else :
             # The file exists.
             # Let's make some figures
             
-            # Pie chart
+            # Pie chart prep
+            # Get the columns we're interested in.
             actDF_subset = actDF[['sport_type', 'moving_time', 'elapsed_time', 'distance', 'total_elevation_gain', 'year']]
+            # If a year is given, get the data from that year only.
             if year :
                 actDF_subset = actDF_subset[actDF_subset['year'] == year]
             else :
-                # Note that years will be sorted in reverse chronological order because
+                # If we don't have a year given, get the first and last year so that we can
+                # add them to the chart title later.
+                # Note that years below will be sorted in reverse chronological order because
                 # unique() returns values in order to appearance and Strava results are
                 # returned newest to oldest.
                 years = actDF_subset['year'].unique()
                 start_year = years[-1]
                 end_year = years[0]
+            # Now create a df for the pie chart, adding a column for fraction of moving time.
+            # Group by sport_type and then sum the columns so that we can have the total moving time for each
+            # sport_type.
+            # Sort pie_df by moving_time so that the type with the largest total moving time is first.
             pie_df = actDF_subset.groupby('sport_type').sum().reset_index().sort_values(by='moving_time', ascending=False).reset_index()
-            #pie_df = actDF_subset.groupby('type').sum().reset_index()
+            # Create a column for the fraction of the total moving time. So first get the total moving time across all sport types.
             total_moving_time = actDF_subset['moving_time'].sum()
             pie_df['moving_time_fraction'] = pie_df['moving_time']/total_moving_time
-#            print(pie_df['moving_time_fraction'])
-            # Group activities that make up less than one percent of the moving time
+            # Group activities that make up less than other_threshold of the moving time
             # so that the pie doesn't look too crowded.
             wedges = []
             labels = []
             # This works because pie_df is sorted.
+            # boolean to mark the first time we pass the threshold. Once this is set to False,
+            # all remaining will be less than the threshold and so we'll lump them in with the first.
             first_crossing = True
             for fraction, label in zip(pie_df['moving_time_fraction'], pie_df['sport_type']) :
+                # Append fractions and labels until we cross the threshold.
                 if fraction >= other_threshold :
                     wedges.append(fraction)
                     labels.append(label)
                 else :
+                    # The first time we cross, append. Subsequent times
+                    # lump them into the last elements.
                     if first_crossing :
                         wedges.append(fraction)
                         labels.append('Other')
@@ -1053,19 +1144,20 @@ class StravaAnalyzer :
                     else :
                         wedges[-1] += fraction
                         labels[-1] = 'Other'
+            # Finally create the plot.
             fig, ax = plt.subplots(figsize=(20,20))
-            #max_index = pie_df['moving_time_fraction'].idxmax()
-            #explode = [0 for i in range(0, len(pie_df['moving_time_fraction']))]
+            # For fun, let's explode the biggest wedge out of the pie a bit.
             explode = [0 for i in range(0, len(wedges))]
             explode[0] = 0.1
-            #ax.pie(wedges, labels=labels, autopct='%1.1f%%', textprops={'size': 'xx-large'}, shadow=True, explode=explode)
+            # Helper function for labeling wedges.
+            # Given a percent figure out how many hours that amounts to.
             def label_func(pct) :
                 hours = int(np.round((total_moving_time * pct/100.0)/3600.0))
                 return f"{pct:.1f}%\n({hours:,} hours)" if pct >= 2 else f"{pct:.1f}% - ({hours:,} hours)"
-            #ax.pie(wedges, labels=labels, autopct=lambda pct: label_func(pct), textprops={'size': 'xx-large'}, shadow=True, explode=explode)
             wdgs, texts, autotexts = ax.pie(wedges, labels=labels, autopct=lambda pct: label_func(pct), textprops={'size': 'xx-large'}, shadow=True, explode=explode)
             plt.setp(autotexts, size=20, weight='bold')
             plt.setp(texts, size=20, weight='bold')
+            # Set the title
             if year :
                 plt.suptitle("Moving Time Breakdown by Activity Type in " + str(year), fontsize=30, weight='bold')
                 ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours\n', fontsize=25, weight='bold')
@@ -1074,6 +1166,7 @@ class StravaAnalyzer :
                 ax.set_title(f'\nTotal moving time across all activities was {int(np.round(total_moving_time/3600.0)):,} hours\n', fontsize=25, weight='bold')
                 #ax.set_title("Percent of Moving Time by Activity Type", fontsize=30, weight='bold')
             plt.tight_layout()
+            # Save it.
             if year :
                 fig.savefig('all_acts_pie_'+str(year)+'.png')
             else :
@@ -1081,11 +1174,21 @@ class StravaAnalyzer :
             plt.close()
             
     def get_activity_list(self) :
+        """
+        Return a list of all recorded Strava sport_types.
+
+        The list is NOT sortable because pd.Series.unique() is not sortable.
+
+        Returns
+        -------
+        list
+            list of Strava sport types.
+        """
         csv_file = "strava-activities.csv"
         try :
             actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
         except FileNotFoundError:
-            print(csv_file, "file does not exist. Record some of that activity and try again.")
+            print(csv_file, "file does not exist. Record some activities and try again.")
             return None
         else :
             # The file exists.
