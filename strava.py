@@ -1173,6 +1173,133 @@ class StravaAnalyzer :
                 fig.savefig('all_acts_pie.png')
             plt.close()
             
+    def make_seasonal_pie_charts(self, activity_type='Ride', year=None, metric=False) :
+        """
+        Produce two pie chart showing breakdown of distance and elevation gain by season.
+
+        If no year is given, the pie chart includes all recorded activities of the given activity_type.
+        If a year is given, it only includes activities from that year. 
+        
+        Saves charts with file names [activity_type]_distance_pie.png and [activity_type]_elevation_pie.png.
+        If the year parameter is included, it appends the year before the file extension. If the metric param
+        is False, it assumes miles for distance and elevation gain for feet. If True, it assumes kilometers and
+        meters.
+
+        Parameters
+        ----------
+        activity_type : String, optional
+            The Strava sport type we're interested in. Default is Ride.
+        year : int, optional
+            If given, the year of the data we're interested in.
+        metric : bool, optional
+            Flag to specifiy metric or imperial units. Default is False (imperial)
+        """
+        # Get the stored stava data.
+        csv_file = activity_type + ".csv"
+        try :
+            actDF = pd.read_csv(csv_file, index_col="id", parse_dates=["start_date", "start_date_local"])
+        except FileNotFoundError:
+            print(csv_file, "file does not exist. Record some activities of that type and try again.")
+            return None
+        else :
+            # The file exists.
+            
+            # Pie chart prep
+            if year :
+                actDF= actDF[actDF['year'] == year]
+            else :
+                # If we don't have a year given, get the first and last year so that we can
+                # add them to the chart title later.
+                # Note that years below will be sorted in reverse chronological order because
+                # unique() returns values in order to appearance and Strava results are
+                # returned newest to oldest.
+                years = actDF['year'].unique()
+                start_year = years[-1]
+                end_year = years[0]
+            # Now create a df for the pie charts.
+            # Group by season and then sum the columns so that we can have the total distance and
+            # elevation gain by sport_type.
+            # First subset the data to get just the columns that we want since Pandas will complain
+            # about not being able to sum certain data types, like datetimes.
+            actDF = actDF[['distance', 'total_elevation_gain', 'season']]
+            pie_df = actDF.groupby('season').sum().reset_index()
+            # Create a columns for the fractions of the total distance and elevation gain.
+            # So first get total distance and total elevation gain across all seasons.
+            total_distance = actDF['distance'].sum()
+            total_elev = actDF['total_elevation_gain'].sum()
+            pie_df['distance_fraction'] = pie_df['distance']/total_distance
+            pie_df['elev_fraction'] = pie_df['total_elevation_gain']/total_elev
+            dist_wedges = []
+            dist_labels = []
+            for fraction, label in zip(pie_df['distance_fraction'], pie_df['season']) :
+                # Append fractions and labels.
+                dist_wedges.append(fraction)
+                dist_labels.append(label)
+            # Finally create the plots.
+            # Distance
+            fig, ax = plt.subplots(figsize=(20,20))
+
+            # Helper function for labeling distance wedges.
+            # Given a percent figure out how many units of distance that amounts to.
+            def label_func_dist(pct) :
+                dist = int(np.round((total_distance * pct/100.0)))
+                dist = int(np.round(dist * 0.000621371)) if not metric else int(np.round(dist / 1000.0))
+                return f"{pct:.1f}%\n({dist:,} miles)" if not metric else f"{pct:.1f}%\n({dist:,} km)"
+            wdgs, texts, autotexts = ax.pie(dist_wedges, labels=dist_labels, autopct=lambda pct: label_func_dist(pct), textprops={'size': 'xx-large'}, shadow=True)
+            plt.setp(autotexts, size=20, weight='bold')
+            plt.setp(texts, size=20, weight='bold')
+            # Set the title
+            if year :
+                plt.suptitle(f"{activity_type} Distance Breakdown by Season in {str(year)}", fontsize=30, weight='bold')
+            else :
+                plt.suptitle(f"{activity_type} Distance Gain Breakdown by from {start_year} to {end_year} ", fontsize=30, weight='bold')
+            if not metric :
+                ax.set_title(f'\nTotal {activity_type} Distance was {int(np.round(total_distance * 0.000621371)):,} miles\n', fontsize=25, weight='bold')
+            else :
+                ax.set_title(f'\nTotal {activity_type} Distance was {int(np.round(total_distance / 1000.0)):,} km\n', fontsize=25, weight='bold')
+            plt.tight_layout()
+            # Save it.
+            if year :
+                fig.savefig(activity_type+'_distance_pie_'+str(year)+'.png')
+            else :
+                fig.savefig(activity_type+'_distance_pie.png')
+            plt.close()
+            
+            # Elevation
+            elev_wedges = []
+            elev_labels = []
+            for fraction, label in zip(pie_df['elev_fraction'], pie_df['season']) :
+                # Append fractions and labels.
+                elev_wedges.append(fraction)
+                elev_labels.append(label)
+            fig, ax = plt.subplots(figsize=(20,20))
+
+            # Helper function for labeling elevation wedges.
+            # Given a percent figure out how many units of elevation that amounts to.
+            def label_func_elev(pct) :
+                elev = int(np.round((total_elev * pct/100.0)))
+                elev = int(np.round(elev * 3.28084)) if not metric else int(np.round(elev))
+                return f"{pct:.1f}%\n({elev:,} feet)" if not metric else f"{pct:.1f}%\n({elev:,}m)"
+            wdgs, texts, autotexts = ax.pie(elev_wedges, labels=elev_labels, autopct=lambda pct: label_func_elev(pct), textprops={'size': 'xx-large'}, shadow=True)
+            plt.setp(autotexts, size=20, weight='bold')
+            plt.setp(texts, size=20, weight='bold')
+            # Set the title
+            if year :
+                plt.suptitle(f"{activity_type} Elevation Gain Breakdown by Season in {str(year)}", fontsize=30, weight='bold')
+            else :
+                plt.suptitle(f"{activity_type} Elevation Gain Breakdown by Season from {start_year} to {end_year} ", fontsize=30, weight='bold')
+            if not metric :
+                ax.set_title(f'\nTotal {activity_type} Elevation Gain was {int(np.round(total_elev * 3.28084)):,} feet\n', fontsize=25, weight='bold')
+            else :
+                ax.set_title(f'\nTotal {activity_type} Elevation Gain was {int(np.round(total_elev)):,} m\n', fontsize=25, weight='bold')
+            plt.tight_layout()
+            # Save it.
+            if year :
+                fig.savefig(activity_type+'_elevation_pie_'+str(year)+'.png')
+            else :
+                fig.savefig(activity_type+'_elevation_pie.png')
+            plt.close()
+            
     def get_activity_list(self) :
         """
         Return a list of all recorded Strava sport_types.

@@ -5,7 +5,7 @@ sa = strava.StravaAnalyzer()
 
 # If you want a list of all of Strava sport types you have
 # recorded, uncomment the next line.
-#print(sa.get_activity_list().sort())
+print(sa.get_activity_list().sort())
 
 # Make some summary bar charts that compare distance and elevation gain
 # across years, months, and seasons.
@@ -14,6 +14,9 @@ sa.make_activity_figures(activity_list=['Ride', 'VirtualRide', 'Walk', 'Hike'])
 # Make a pie chart that shows the breakdown of moving time by sport type
 # for the year 2023
 sa.make_combined_pie_chart(2023)
+
+sa.make_seasonal_pie_charts()
+sa.make_seasonal_pie_charts(metric=False, year=2023)
 
 # Uncomment the line below if you want to retrieve your Strava profile data.
 #sa.get_strava_profile()
