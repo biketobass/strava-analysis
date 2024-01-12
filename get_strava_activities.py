@@ -4,8 +4,8 @@ import strava
 sa = strava.StravaAnalyzer()
 
 # If you want a list of all of Strava sport types you have
-# recorded, uncomment the next line.
-print(sa.get_activity_list().sort())
+# recorded, use the next line.
+print(sa.get_activity_list())
 
 # Make some summary bar charts that compare distance and elevation gain
 # across years, months, and seasons.
@@ -15,6 +15,9 @@ sa.make_activity_figures(activity_list=['Ride', 'VirtualRide', 'Walk', 'Hike'])
 # for the year 2023
 sa.make_combined_pie_chart(2023)
 
+# Make a pie charts that illustrate the breakdown of distance and elevation gain
+# by season. The first does it for all years in your Strava. Specifying a year
+# as in the second does it for just one year.
 sa.make_seasonal_pie_charts()
 sa.make_seasonal_pie_charts(metric=False, year=2023)
 
