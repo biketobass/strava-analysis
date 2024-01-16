@@ -910,6 +910,10 @@ class StravaAnalyzer :
         else :
             # The file exists.
             # Let's make some figures
+            
+            # Ultimately, we'll save the figures and append the years in year_list to the
+            # file names, so create a string to be that suffix.
+            fn_suffix = '_' + '_'.join([str(y) for y in year_list]) if year_list else ''
 
             # Each feature tuple below gives a column name from actDF paired with a more readable description.
             if not metric :
@@ -966,9 +970,15 @@ class StravaAnalyzer :
             # We can run into trouble if a < base, hence the while loop.
             # This function and the next will be helpful for formatting the chart axes.
             def my_round(a, base) :
+                if a == 0 :
+                    return a
                 while a < base :
                     base = base // 2
+                if base == 0 :
+                    base = 1
                 x = (a // base) * base
+                if x == 0 :
+                    x = 1
                 y = float(a % base)
                 y = int(round(y/base) * base)
                 return x+y
@@ -986,6 +996,8 @@ class StravaAnalyzer :
                     order_mag = ''
                 num_y_ticks = 20
                 y_tick_step = max_val / num_y_ticks
+                if y_tick_step == 0 :
+                    y_tick_step = 1
                 # Now round this to the nearest multiple of 5*y_tick_divisor
                 # unless y_tick_divisor is one, in which case use 50.
                 y_tick_step = my_round(y_tick_step, 50) if y_tick_divisor == 1 else my_round(y_tick_step, 5*y_tick_divisor)
@@ -997,7 +1009,7 @@ class StravaAnalyzer :
             # Loop through the features (distance, elevation gain, etc.)
             for feature in features :
                 # Set the style for all of the figures
-                sns.set_style("whitegrid")
+                sns.set_style("whitegrid", {"grid.linestyle": ""})
                 
                 # Create barplots for each feature for year, month, season.
                 max_in_year = df_by_year[feature[0]].max() # Will use later to set the max value of the y-axis.
@@ -1015,56 +1027,74 @@ class StravaAnalyzer :
                 ax.set_ylim((0,y_lim_max))
                 yticks = np.arange(0,y_lim_max, tick_step)
                 ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor):,}{order_mag}' for y in yticks], fontsize=16)
+                for y in yticks :
+                    ax.axhline(y, xmin=0, xmax=1, linewidth=0.25, dashes=(1, 1), color='black')
                 # Set up the x-axis.
                 ax.set_xlabel("Year", fontsize=25)
                 ax.set_xticks(ticks=df_by_year.index, labels=df_by_year['year'], fontsize=25)
                 for container in ax.containers :
                     ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:,.0f}{order_mag}', fontsize=16)
                 plt.tight_layout()
-                fig.savefig(activity_type+"_"+feature[0] + "_bar_by_year.png")
+                fig.savefig(activity_type+"_"+feature[0] + "_bar_by_year"+fn_suffix+".png")
                 plt.close()
 
                 # Compare total feature value per month per year - 
                 # number of miles per month each year for example.
+                #sns.set_style("white")
                 fig, ax = plt.subplots(figsize=(30,20))
                 max_in_month = df_by_year_month[feature[0]].max()
                 sns.barplot(data=df_by_year_month, x='month_num', y=feature[0], hue='year', ax=ax, palette='deep')
                 ax.set_ylabel(feature[1], fontsize=25)
                 ax.set_title(feature[1] + " per Month per Year ("+activity_type+")", fontsize=30)
                 ax.set_xticks(ticks=month_df.index, labels=month_df['month'], fontsize=25)
+                # Add vertical lines between month groups to make it easier to see where each starts
+                # and ends.
+                for x in month_df.index :
+                    ax.axvline(x=x+0.5, ymin=0, ymax=1, linewidth=3, dashes=(1, 1), color='black')
+                    if x % 2 == 1 :
+                        ax.axvspan(x-0.5, x+0.5, facecolor='gray', alpha=0.2)
                 tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_month)
                 y_lim_max = max_in_month+tick_step // 2
                 yticks=np.arange(0,y_lim_max, tick_step)
                 ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor):,.0f}{order_mag}' for y in yticks], fontsize=16)
+                for y in yticks :
+                    ax.axhline(y, xmin=0, xmax=1, linewidth=0.25, dashes=(1, 1), color='black')
                 ax.set_xlabel("Month", fontsize=25)
                 ax.set_ylim((0,y_lim_max))
                 for container in ax.containers :
                     ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:,.0f}{order_mag}' if x>0 else '', fontsize=16)
-                ax.legend(fontsize=20)
+                ax.legend(fontsize=20, loc='upper left')
                 plt.tight_layout()
                 plt.grid()
-                fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_month.png")
+                fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_month"+fn_suffix+".png")
                 plt.close()
             
                 # Barplots comparing feature values per season per year
+                #sns.set_style("white")
                 fig, ax = plt.subplots(figsize=(30,20))
                 max_in_season = df_by_year_season[feature[0]].max()
                 sns.barplot(data=df_by_year_season, x='season_num', y=feature[0], hue='year', ax=ax, palette='deep')
                 ax.set_ylabel(feature[1], fontsize=25)
                 ax.set_title(feature[1] + " per Season per Year ("+activity_type+")", fontsize=30)
                 ax.set_xticks(ticks=seasons_df.index, labels=seasons_df['season'], fontsize=25)
+                for x in seasons_df.index :
+                    ax.axvline(x=x+0.5, ymin=0, ymax=1, linewidth=3, dashes=(1, 1), color='black')
+                    if x % 2 == 1 :
+                        ax.axvspan(x-0.5, x+0.5, facecolor='gray', alpha=0.2)
                 tick_step, y_tick_divisor, order_mag = get_formatting_values(max_in_season)
                 y_lim_max = max_in_season + tick_step // 2
                 yticks=np.arange(0,y_lim_max, tick_step)
                 ax.set_yticks(ticks=yticks, labels=[f'{round(y/y_tick_divisor):,.0f}{order_mag}' for y in yticks], fontsize=16)
+                for y in yticks :
+                    ax.axhline(y, xmin=0, xmax=1, linewidth=0.25, dashes=(1, 1), color='black')
                 ax.set_xlabel("Season", fontsize=25)
                 ax.set_ylim((0,y_lim_max))
                 for container in ax.containers :
                     ax.bar_label(container, fmt=lambda x: f'{x/y_tick_divisor:,.0f}{order_mag}' if x>0 else '', fontsize=16)
-                ax.legend(fontsize=20)
+                ax.legend(fontsize=20, loc='upper left')
                 plt.tight_layout()
                 plt.grid()
-                fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_season.png")
+                fig.savefig(activity_type+"_" + feature[0]+"_bar_by_year_season"+fn_suffix+".png")
                 plt.close()
              
     def make_combined_pie_chart(self, year=None, other_threshold=0.01) :

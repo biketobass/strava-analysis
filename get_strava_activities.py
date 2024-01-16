@@ -11,15 +11,25 @@ print(sa.get_activity_list())
 # across years, months, and seasons.
 sa.make_activity_figures(activity_list=['Ride', 'VirtualRide', 'Walk', 'Hike'])
 
+# If you don't want the summary bar charts to include
+# every year you've been on Strava, use a list of years as below.
+sa.make_activity_figures(activity_list=['Ride'], year_list=[2020, 2021, 2022, 2023])
+
 # Make a pie chart that shows the breakdown of moving time by sport type
-# for the year 2023
+# for one year.
 sa.make_combined_pie_chart(2023)
 
-# Make a pie charts that illustrate the breakdown of distance and elevation gain
-# by season. The first does it for all years in your Strava. Specifying a year
-# as in the second does it for just one year.
+# If you want the breakdown of moving time by sport type for all years
+# you've been on Strava, leave the year out.
+sa.make_combined_pie_chart()
+
+# Make a pie chart that illustrate the breakdown of distance and elevation gain
+# by season for a particular sport type and year.
+sa.make_seasonal_pie_charts(activity_type='Ride', metric=False, year=2023)
+
+# Make the same pie chart but for all the years you've been on Strava.
 sa.make_seasonal_pie_charts()
-sa.make_seasonal_pie_charts(metric=False, year=2023)
+
 
 # Uncomment the line below if you want to retrieve your Strava profile data.
 #sa.get_strava_profile()
