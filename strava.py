@@ -724,7 +724,7 @@ class StravaAnalyzer :
                 Indep = filteredDF[[elev_gain_key, dist_key]]
                 dep = filteredDF[speed_key]
                 regr = linear_model.LinearRegression()
-                regr.fit(Indep,dep)
+                regr.fit(Indep.to_numpy(),dep.to_numpy())
                 # Now get the predictions.
                 pred1 = avg_elev_gain*lin.slope + lin.intercept
                 pred2 = regr.predict([[elev_gain, distance]])
@@ -1013,6 +1013,11 @@ class StravaAnalyzer :
                 
                 # Create barplots for each feature for year, month, season.
                 max_in_year = df_by_year[feature[0]].max() # Will use later to set the max value of the y-axis.
+                # If the max is zero, it means we didn't have any of that feature at all.
+                # Just go on to the next one.
+                if max_in_year == 0 :
+                    print(f"Skipping bar charts for {feature[0]} in {activity_type} because there wasn't any.")
+                    continue
                 # Start with comparisons across years.
                 fig, ax = plt.subplots(figsize=(imwidth,imheight))
                 # Use the feature tuples. feature[0] is the column; feature[1]
@@ -1275,25 +1280,29 @@ class StravaAnalyzer :
                 dist = int(np.round((total_distance * pct/100.0)))
                 dist = int(np.round(dist * 0.000621371)) if not metric else int(np.round(dist / 1000.0))
                 return f"{pct:.1f}%\n({dist:,} miles)" if not metric else f"{pct:.1f}%\n({dist:,} km)"
-            wdgs, texts, autotexts = ax.pie(dist_wedges, labels=dist_labels, autopct=lambda pct: label_func_dist(pct), textprops={'size': 'xx-large'}, shadow=True)
-            plt.setp(autotexts, size=20, weight='bold')
-            plt.setp(texts, size=20, weight='bold')
-            # Set the title
-            if year :
-                plt.suptitle(f"{activity_type} Distance Breakdown by Season in {str(year)}", fontsize=30, weight='bold')
+            # Only make the figure if there is actually any distance.
+            if total_distance > 0 :
+                wdgs, texts, autotexts = ax.pie(dist_wedges, labels=dist_labels, autopct=lambda pct: label_func_dist(pct), textprops={'size': 'xx-large'}, shadow=True)
+                plt.setp(autotexts, size=20, weight='bold')
+                plt.setp(texts, size=20, weight='bold')
+                # Set the title
+                if year :
+                    plt.suptitle(f"{activity_type} Distance Breakdown by Season in {str(year)}", fontsize=30, weight='bold')
+                else :
+                    plt.suptitle(f"{activity_type} Distance Breakdown by Season from {start_year} to {end_year} ", fontsize=30, weight='bold')
+                if not metric :
+                    ax.set_title(f'\nTotal {activity_type} Distance was {int(np.round(total_distance * 0.000621371)):,} miles\n', fontsize=25, weight='bold')
+                else :
+                    ax.set_title(f'\nTotal {activity_type} Distance was {int(np.round(total_distance / 1000.0)):,} km\n', fontsize=25, weight='bold')
+                plt.tight_layout()
+                # Save it.
+                if year :
+                    fig.savefig(activity_type+'_distance_pie_'+str(year)+'.png')
+                else :
+                    fig.savefig(activity_type+'_distance_pie.png')
+                plt.close()
             else :
-                plt.suptitle(f"{activity_type} Distance Gain Breakdown by from {start_year} to {end_year} ", fontsize=30, weight='bold')
-            if not metric :
-                ax.set_title(f'\nTotal {activity_type} Distance was {int(np.round(total_distance * 0.000621371)):,} miles\n', fontsize=25, weight='bold')
-            else :
-                ax.set_title(f'\nTotal {activity_type} Distance was {int(np.round(total_distance / 1000.0)):,} km\n', fontsize=25, weight='bold')
-            plt.tight_layout()
-            # Save it.
-            if year :
-                fig.savefig(activity_type+'_distance_pie_'+str(year)+'.png')
-            else :
-                fig.savefig(activity_type+'_distance_pie.png')
-            plt.close()
+                print(f'{activity_type} has no distance. Did not produce pie chart.')
             
             # Elevation
             elev_wedges = []
@@ -1310,25 +1319,28 @@ class StravaAnalyzer :
                 elev = int(np.round((total_elev * pct/100.0)))
                 elev = int(np.round(elev * 3.28084)) if not metric else int(np.round(elev))
                 return f"{pct:.1f}%\n({elev:,} feet)" if not metric else f"{pct:.1f}%\n({elev:,}m)"
-            wdgs, texts, autotexts = ax.pie(elev_wedges, labels=elev_labels, autopct=lambda pct: label_func_elev(pct), textprops={'size': 'xx-large'}, shadow=True)
-            plt.setp(autotexts, size=20, weight='bold')
-            plt.setp(texts, size=20, weight='bold')
-            # Set the title
-            if year :
-                plt.suptitle(f"{activity_type} Elevation Gain Breakdown by Season in {str(year)}", fontsize=30, weight='bold')
+            if total_elev > 0 :
+                wdgs, texts, autotexts = ax.pie(elev_wedges, labels=elev_labels, autopct=lambda pct: label_func_elev(pct), textprops={'size': 'xx-large'}, shadow=True)
+                plt.setp(autotexts, size=20, weight='bold')
+                plt.setp(texts, size=20, weight='bold')
+                # Set the title
+                if year :
+                    plt.suptitle(f"{activity_type} Elevation Gain Breakdown by Season in {str(year)}", fontsize=30, weight='bold')
+                else :
+                    plt.suptitle(f"{activity_type} Elevation Gain Breakdown by Season from {start_year} to {end_year} ", fontsize=30, weight='bold')
+                if not metric :
+                    ax.set_title(f'\nTotal {activity_type} Elevation Gain was {int(np.round(total_elev * 3.28084)):,} feet\n', fontsize=25, weight='bold')
+                else :
+                    ax.set_title(f'\nTotal {activity_type} Elevation Gain was {int(np.round(total_elev)):,} m\n', fontsize=25, weight='bold')
+                plt.tight_layout()
+                # Save it.
+                if year :
+                    fig.savefig(activity_type+'_elevation_pie_'+str(year)+'.png')
+                else :
+                    fig.savefig(activity_type+'_elevation_pie.png')
+                plt.close()
             else :
-                plt.suptitle(f"{activity_type} Elevation Gain Breakdown by Season from {start_year} to {end_year} ", fontsize=30, weight='bold')
-            if not metric :
-                ax.set_title(f'\nTotal {activity_type} Elevation Gain was {int(np.round(total_elev * 3.28084)):,} feet\n', fontsize=25, weight='bold')
-            else :
-                ax.set_title(f'\nTotal {activity_type} Elevation Gain was {int(np.round(total_elev)):,} m\n', fontsize=25, weight='bold')
-            plt.tight_layout()
-            # Save it.
-            if year :
-                fig.savefig(activity_type+'_elevation_pie_'+str(year)+'.png')
-            else :
-                fig.savefig(activity_type+'_elevation_pie.png')
-            plt.close()
+                print(f'{activity_type} has no elevation gain. Did not produce pie chart.')
             
     def get_activity_list(self) :
         """
