@@ -15,7 +15,7 @@ sa.make_activity_figures(activity_list=['Ride', 'VirtualRide', 'Walk', 'Hike'], 
 
 # If you don't want the summary bar charts to include
 # every year you've been on Strava, use a list of years as below.
-sa.make_activity_figures(activity_list=['Ride'], year_list=[2020, 2021, 2022, 2023], metric=False)
+sa.make_activity_figures(activity_list=['Ride'], year_list=[2019, 2020, 2021, 2022, 2023, 2024], metric=False)
 
 # Make a pie chart that shows the breakdown of moving time by sport type
 # for one year.
