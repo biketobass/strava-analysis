@@ -11,7 +11,7 @@ print(sa.get_activity_list())
 # across years, months, and seasons for certain sport types that you've
 # recorded. The metric flag is False. Set it to True if you want kilometers
 # for distance and meters for elevation gain.
-# sa.make_activity_figures(activity_list=['Ride', 'VirtualRide', 'Walk', 'Hike'], metric=False)
+sa.make_activity_figures(activity_list=['Ride', 'VirtualRide', 'Walk', 'Hike'], metric=False)
 
 # If you don't want the summary bar charts to include
 # every year you've been on Strava, use a list of years as below.
